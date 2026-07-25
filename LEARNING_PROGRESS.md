@@ -1,0 +1,156 @@
+# AI 学习助手：学习进度表
+
+## 教学规则
+
+每一个功能都必须依次经历：功能分析 → 知识点分析 → 编号引用 → 教学 → 分段写代码 → 运行验收 → 本节总结。
+
+- 答对小考题后，自动进入下一个知识点；但进入新页面、开始写代码或进入下一开发阶段前，仍须等待“继续”指令。
+- 第一次出现的术语必须用通俗语言解释。
+- 完成某个知识点，必须经过讲解和运行验证后才能勾选。
+- 每个知识点讲完后必须出一道考题；先等学习者作答，再讲解答案。
+- 当前项目以 V1 主闭环为范围：学习库、图片/Word 导入、识别确认、刷题、错题集；暂不做提醒、会员、复杂报表等功能。
+
+## 当前课程状态
+
+- 当前功能：学习库列表（本地数据版）
+- 当前阶段：重新从“功能分析”开始
+- 已确认完成的知识点：无
+- 暂停点：学习库列表通过手机验收后，必须暂停并提醒；未经“继续”指令，不进入学习库详情页。
+
+## JavaScript 前置知识
+
+- [x] JS-01 const / let
+- [x] JS-02 基本数据类型：string、number、boolean
+- [x] JS-03 对象 {}
+- [x] JS-04 数组 []
+- [x] JS-05 函数与箭头函数
+- [x] JS-06 解构赋值
+- [x] JS-07 展开运算符 ...
+- [x] JS-08 map、find、filter
+- [x] JS-09 条件判断
+- [ ] JS-10 Promise / async / await
+
+## React 与 React Native
+
+- [x] RN-01 JSX：在 TypeScript 中描述手机界面
+- [x] RN-02 import / export：文件之间如何使用代码
+- [x] RN-03 Function Component：函数组件
+- [x] RN-04 Props：父组件向子组件传数据
+- [x] RN-05 State：页面会变化的数据
+- [x] RN-06 useState：创建和更新 State
+- [ ] RN-07 useEffect：处理副作用
+- [x] RN-08 View：页面区域与容器
+- [x] RN-09 Text：显示文字
+- [x] RN-10 StyleSheet：集中管理样式
+- [x] RN-11 Flex 布局：排列和占满空间
+- [x] RN-12 间距、尺寸与颜色
+- [x] RN-13 FlatList：高效渲染列表
+- [ ] RN-14 ScrollView：普通滚动容器
+- [x] RN-15 keyExtractor：列表项目的唯一标识
+- [ ] RN-16 条件渲染：按状态显示不同内容
+- [x] RN-17 Pressable：可点击区域
+- [ ] RN-18 Alert：提示框
+- [ ] RN-19 TextInput：输入文字
+- [ ] RN-20 KeyboardAvoidingView：输入时避开键盘
+- [ ] RN-21 Modal：弹窗
+- [ ] RN-22 Image：展示图片
+- [ ] RN-23 ActivityIndicator：加载状态
+- [ ] RN-24 SafeAreaView：避开状态栏和刘海区域
+- [ ] RN-25 表单状态与校验
+- [ ] RN-26 列表空状态与错误状态
+- [ ] RN-27 自定义组件拆分
+- [ ] RN-28 组件职责与单向数据流
+- [x] RN-29 回调函数与事件处理
+- [x] RN-30 React 重新渲染机制
+- [ ] RN-31 useMemo：缓存计算结果
+- [ ] RN-32 useCallback：缓存函数引用
+- [ ] RN-33 Context：跨组件共享数据
+- [ ] RN-34 异步请求与 loading 状态
+- [ ] RN-35 错误处理与用户提示
+
+## TypeScript
+
+- [ ] TS-01 基本类型：string、number、boolean
+- [x] TS-02 type：定义数据形状
+- [ ] TS-03 interface：定义对象契约
+- [x] TS-04 数组与数组元素类型
+- [ ] TS-05 对象属性与可选属性
+- [ ] TS-06 函数参数和返回值类型
+- [ ] TS-07 泛型：例如 useState<Library[]>
+- [ ] TS-08 联合类型
+- [ ] TS-09 字面量类型
+- [ ] TS-10 类型推断
+- [ ] TS-11 类型别名与接口的选择
+- [ ] TS-12 import type
+- [ ] TS-13 null 与 undefined
+- [ ] TS-14 可选链与空值合并
+- [ ] TS-15 Record 类型
+- [ ] TS-16 Partial 与 Pick
+- [ ] TS-17 枚举替代方案
+- [ ] TS-18 API 请求与响应类型
+- [ ] TS-19 错误类型收窄
+- [ ] TS-20 严格模式与常见报错
+
+## Expo 与导航
+
+- [ ] EX-01 Expo Go、开发服务器与二维码
+- [x] EX-02 Fast Refresh：保存后手机自动刷新
+- [ ] EX-03 package.json：依赖与命令
+- [ ] EX-04 app.json：应用配置
+- [ ] EX-05 Expo Router：文件即页面
+- [ ] EX-06 Stack：前进和返回页面
+- [ ] EX-07 Tabs：底部导航
+- [ ] EX-08 路由参数
+- [ ] EX-09 动态路由：例如 library/[libraryId]
+- [ ] EX-10 图片、文件选择等 Expo 模块的安装方式
+
+## Spring Boot 后端
+
+- [ ] SB-01 Maven 项目结构
+- [ ] SB-02 Controller：接收接口请求
+- [ ] SB-03 Service：业务规则
+- [ ] SB-04 Repository / Mapper：读写数据库
+- [ ] SB-05 DTO、Entity、VO 的职责
+- [ ] SB-06 REST API 与 HTTP 方法
+- [ ] SB-07 请求参数校验
+- [ ] SB-08 统一返回格式
+- [ ] SB-09 全局异常处理
+- [ ] SB-10 MySQL 表、主键与外键
+- [ ] SB-11 MyBatis-Plus 基础 CRUD
+- [ ] SB-12 条件查询与分页
+- [ ] SB-13 事务
+- [ ] SB-14 用户注册与密码加密
+- [ ] SB-15 JWT 登录认证
+- [ ] SB-16 权限与数据归属
+- [ ] SB-17 学习库 CRUD
+- [ ] SB-18 题目 CRUD
+- [ ] SB-19 作答记录与错题状态
+- [ ] SB-20 连续答对两次的业务规则
+- [ ] SB-21 文件上传
+- [ ] SB-22 对象存储
+- [ ] SB-23 异步任务
+- [ ] SB-24 OCR / AI 调用封装
+- [ ] SB-25 识别草稿与人工确认
+- [ ] SB-26 日志
+- [ ] SB-27 配置文件与环境变量
+- [ ] SB-28 单元测试
+- [ ] SB-29 接口测试
+- [ ] SB-30 部署基础
+
+## 项目架构
+
+- [ ] AR-01 前端页面、组件、数据模型的分层
+- [ ] AR-02 后端 Controller / Service / Mapper 分层
+- [ ] AR-03 前后端接口契约
+- [ ] AR-04 学习库作为数据归属边界
+- [ ] AR-05 library_id 隔离数据
+- [ ] AR-06 本地假数据到真实接口的替换
+- [ ] AR-07 图片批量导入流程
+- [ ] AR-08 Word 导入流程
+- [ ] AR-09 识别草稿、确认后入库
+- [ ] AR-10 题型分组刷题
+- [ ] AR-11 错题集状态机
+- [ ] AR-12 连续答对两次移出错题集
+- [ ] AR-13 前端状态与后端数据一致性
+- [ ] AR-14 错误、加载和空状态设计
+- [ ] AR-15 Git 提交与功能验收
