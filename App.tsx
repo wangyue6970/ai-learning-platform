@@ -1,34 +1,8 @@
 import { StatusBar } from 'expo-status-bar';
+import { router } from 'expo-router';
 import { useState } from 'react';
 import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
-
-type Library = {
-  id: string;
-  name: string;
-  questionCount: number;
-  wrongQuestionCount: number;
-};
-
-const initialLibraries: Library[] = [
-  {
-    id: 'operating-systems',
-    name: '操作系统期末',
-    questionCount: 128,
-    wrongQuestionCount: 12,
-  },
-  {
-    id: 'data-structures',
-    name: '数据结构',
-    questionCount: 86,
-    wrongQuestionCount: 5,
-  },
-  {
-    id: 'english-vocabulary',
-    name: '英语四级词汇',
-    questionCount: 245,
-    wrongQuestionCount: 0,
-  },
-];
+import { initialLibraries, type Library } from './data/libraries';
 
 export default function App() {
   const [libraries, setLibraries] = useState<Library[]>(initialLibraries);
@@ -52,7 +26,9 @@ export default function App() {
         data={libraries}
         keyExtractor={(library) => library.id}
         renderItem={({ item }) => (
-          <View style={styles.libraryCard}>
+          <Pressable
+            style={styles.libraryCard}
+            onPress={() => router.push(`/library/${item.id}`)}>
             <View style={styles.iconBox}>
               <Text style={styles.iconText}>库</Text>
             </View>
@@ -60,7 +36,7 @@ export default function App() {
               <Text style={styles.libraryName}>{item.name}</Text>
               <Text style={styles.libraryMeta}>共 {item.questionCount} 题 · {item.wrongQuestionCount} 道错题</Text>
             </View>
-          </View>
+          </Pressable>
         )}
         ListHeaderComponent={
           <View style={styles.header}>
