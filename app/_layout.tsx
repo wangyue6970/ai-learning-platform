@@ -1,5 +1,10 @@
 import { Stack } from 'expo-router';
+import { LibraryProvider } from '../contexts/LibraryContext';
 
 export default function RootLayout() {
-  return <Stack screenOptions={{ headerShown: false }} />;
+  return (
+    <LibraryProvider>
+      <Stack screenOptions={{ headerShown: false }} />
+    </LibraryProvider>
+  );
 }

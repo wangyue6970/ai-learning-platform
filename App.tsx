@@ -1,22 +1,33 @@
 import { StatusBar } from 'expo-status-bar';
 import { router } from 'expo-router';
 import { useState } from 'react';
-import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
-import { initialLibraries, type Library } from './data/libraries';
+import { Alert, FlatList, Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useLibraries } from './contexts/LibraryContext';
 
 export default function App() {
-  const [libraries, setLibraries] = useState<Library[]>(initialLibraries);
+  const { libraries, setLibraries } = useLibraries();
+  const [draftName, setDraftName] = useState('');
+  const [isCreateModalVisible, setIsCreateModalVisible] = useState(false);
 
   function createLibrary() {
+    const trimmedName = draftName.trim();
+
+    if (!trimmedName) {
+      Alert.alert('请输入学习库名称');
+      return;
+    }
+
     setLibraries((currentLibraries) => [
       ...currentLibraries,
       {
         id: `local-library-${Date.now()}`,
-        name: `新学习库 ${currentLibraries.length + 1}`,
+        name: trimmedName,
         questionCount: 0,
         wrongQuestionCount: 0,
       },
     ]);
+    setDraftName('');
+    setIsCreateModalVisible(false);
   }
 
   return (
@@ -45,11 +56,32 @@ export default function App() {
           </View>
         }
         ListFooterComponent={
-          <Pressable style={styles.createButton} onPress={createLibrary}>
+          <Pressable style={styles.createButton} onPress={() => setIsCreateModalVisible(true)}>
             <Text style={styles.createButtonText}>＋ 新建学习库</Text>
           </Pressable>
         }
       />
+      <Modal animationType="fade" transparent visible={isCreateModalVisible}>
+        <View style={{ flex: 1, justifyContent: 'center', padding: 20 }}>
+          <View style={{ backgroundColor: '#FFFFFF', borderRadius: 16, padding: 20 }}>
+            <Text>新建学习库</Text>
+            <TextInput
+              placeholder="例如：计算机网络"
+              value={draftName}
+              onChangeText={setDraftName}
+            />
+            <Pressable onPress={createLibrary}>
+              <Text>保存</Text>
+            </Pressable>
+            <Pressable onPress={() => {
+              setDraftName('');
+              setIsCreateModalVisible(false);
+            }}>
+              <Text>取消</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
