@@ -3,6 +3,7 @@ import { router } from 'expo-router';
 import { useState } from 'react';
 import { Alert, FlatList, Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useLibraries } from './contexts/LibraryContext';
+import { useQuestionLearning } from './contexts/QuestionLearningContext';
 import { initialQuestions } from './data/questions';
 
 function getQuestionCount(libraryId: string) {
@@ -11,8 +12,15 @@ function getQuestionCount(libraryId: string) {
 
 export default function App() {
   const { libraries, setLibraries } = useLibraries();
+  const { learningStatuses } = useQuestionLearning();
   const [draftName, setDraftName] = useState('');
   const [isCreateModalVisible, setIsCreateModalVisible] = useState(false);
+
+  function getWrongQuestionCount(libraryId: string) {
+    return learningStatuses.filter(
+      (status) => status.libraryId === libraryId && status.isInWrongSet
+    ).length;
+  }
 
   function createLibrary() {
     const trimmedName = draftName.trim();
@@ -49,7 +57,7 @@ export default function App() {
             </View>
             <View style={styles.libraryInfo}>
               <Text style={styles.libraryName}>{item.name}</Text>
-              <Text style={styles.libraryMeta}>共 {getQuestionCount(item.id)} 题 · {item.wrongQuestionCount} 道错题</Text>
+              <Text style={styles.libraryMeta}>共 {getQuestionCount(item.id)} 题 · {getWrongQuestionCount(item.id)} 道错题</Text>
             </View>
           </Pressable>
         )}

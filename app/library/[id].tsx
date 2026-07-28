@@ -2,6 +2,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 import { Alert, Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useLibraries } from '../../contexts/LibraryContext';
+import { useQuestionLearning } from '../../contexts/QuestionLearningContext';
 import { initialQuestions } from '../../data/questions';
 
 const questionTypeLabels = {
@@ -13,10 +14,14 @@ const questionTypeLabels = {
 export default function LibraryDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { libraries, setLibraries } = useLibraries();
+  const { learningStatuses } = useQuestionLearning();
   const [draftName, setDraftName] = useState('');
   const [isEditModalVisible, setIsEditModalVisible] = useState(false);
   const selectedLibrary = libraries.find((library) => library.id === id);
   const libraryQuestions = initialQuestions.filter((question) => question.libraryId === id);
+  const wrongQuestionCount = learningStatuses.filter(
+    (status) => status.libraryId === id && status.isInWrongSet
+  ).length;
 
   function showNextStageMessage(featureName: string) {
     Alert.alert(featureName, '这个功能会在后续阶段实现。');
@@ -70,7 +75,7 @@ export default function LibraryDetailScreen() {
       </Pressable>
       <Text style={styles.title}>{selectedLibrary.name}</Text>
       <Text style={styles.meta}>共 {libraryQuestions.length} 题</Text>
-      <Text style={styles.meta}>{selectedLibrary.wrongQuestionCount} 道错题</Text>
+      <Text style={styles.meta}>{wrongQuestionCount} 道错题</Text>
       <Text style={styles.questionTitle}>示例题目（{libraryQuestions.length}）</Text>
       {libraryQuestions.length === 0 ? (
         <Text style={styles.emptyText}>暂无题目，后续可通过“导入题目”加入题库。</Text>
@@ -96,7 +101,11 @@ export default function LibraryDetailScreen() {
       <Pressable style={styles.actionButton} onPress={() => router.push(`/library/${id}/practice`)}>
         <Text style={styles.actionButtonText}>刷完整题库</Text>
       </Pressable>
-      <Pressable style={styles.actionButton} onPress={() => showNextStageMessage('刷错题集')}>
+      <Pressable
+        style={styles.actionButton}
+        onPress={() =>
+          router.push({ pathname: '/library/[id]/practice', params: { id, mode: 'wrong' } })
+        }>
         <Text style={styles.actionButtonText}>刷错题集</Text>
       </Pressable>
       <Modal animationType="fade" transparent visible={isEditModalVisible}>
