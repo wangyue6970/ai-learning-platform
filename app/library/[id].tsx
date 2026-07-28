@@ -2,6 +2,13 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 import { Alert, Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useLibraries } from '../../contexts/LibraryContext';
+import { initialQuestions } from '../../data/questions';
+
+const questionTypeLabels = {
+  single_choice: '单选题',
+  multiple_choice: '多选题',
+  true_false: '判断题',
+};
 
 export default function LibraryDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -9,6 +16,7 @@ export default function LibraryDetailScreen() {
   const [draftName, setDraftName] = useState('');
   const [isEditModalVisible, setIsEditModalVisible] = useState(false);
   const selectedLibrary = libraries.find((library) => library.id === id);
+  const libraryQuestions = initialQuestions.filter((question) => question.libraryId === id);
 
   function showNextStageMessage(featureName: string) {
     Alert.alert(featureName, '这个功能会在后续阶段实现。');
@@ -61,8 +69,19 @@ export default function LibraryDetailScreen() {
         <Text style={styles.backButtonText}>‹ 返回</Text>
       </Pressable>
       <Text style={styles.title}>{selectedLibrary.name}</Text>
-      <Text style={styles.meta}>共 {selectedLibrary.questionCount} 题</Text>
+      <Text style={styles.meta}>共 {libraryQuestions.length} 题</Text>
       <Text style={styles.meta}>{selectedLibrary.wrongQuestionCount} 道错题</Text>
+      <Text style={styles.questionTitle}>示例题目（{libraryQuestions.length}）</Text>
+      {libraryQuestions.length === 0 ? (
+        <Text style={styles.emptyText}>暂无题目，后续可通过“导入题目”加入题库。</Text>
+      ) : (
+        libraryQuestions.map((question) => (
+          <View key={question.id} style={styles.questionCard}>
+            <Text style={styles.questionType}>{questionTypeLabels[question.type]}</Text>
+            <Text style={styles.questionStem}>{question.stem}</Text>
+          </View>
+        ))
+      )}
       <Pressable style={styles.actionButton} onPress={openEditModal}>
         <Text style={styles.actionButtonText}>编辑学习库名称</Text>
       </Pressable>
@@ -74,7 +93,7 @@ export default function LibraryDetailScreen() {
         onPress={() => showNextStageMessage('导入题目')}>
         <Text style={styles.primaryButtonText}>导入题目</Text>
       </Pressable>
-      <Pressable style={styles.actionButton} onPress={() => showNextStageMessage('刷完整题库')}>
+      <Pressable style={styles.actionButton} onPress={() => router.push(`/library/${id}/practice`)}>
         <Text style={styles.actionButtonText}>刷完整题库</Text>
       </Pressable>
       <Pressable style={styles.actionButton} onPress={() => showNextStageMessage('刷错题集')}>
@@ -117,6 +136,35 @@ const styles = StyleSheet.create({
   },
   meta: {
     fontSize: 16,
+    marginTop: 12,
+  },
+  questionTitle: {
+    color: '#0F172A',
+    fontSize: 18,
+    fontWeight: '700',
+    marginTop: 28,
+  },
+  questionCard: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: 10,
+    marginTop: 12,
+    padding: 14,
+  },
+  questionStem: {
+    color: '#334155',
+    fontSize: 15,
+    lineHeight: 22,
+  },
+  questionType: {
+    color: '#2563EB',
+    fontSize: 13,
+    fontWeight: '700',
+    marginBottom: 6,
+  },
+  emptyText: {
+    color: '#64748B',
+    fontSize: 14,
+    lineHeight: 21,
     marginTop: 12,
   },
   primaryButton: {

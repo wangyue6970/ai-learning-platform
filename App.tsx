@@ -3,6 +3,11 @@ import { router } from 'expo-router';
 import { useState } from 'react';
 import { Alert, FlatList, Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useLibraries } from './contexts/LibraryContext';
+import { initialQuestions } from './data/questions';
+
+function getQuestionCount(libraryId: string) {
+  return initialQuestions.filter((question) => question.libraryId === libraryId).length;
+}
 
 export default function App() {
   const { libraries, setLibraries } = useLibraries();
@@ -22,7 +27,6 @@ export default function App() {
       {
         id: `local-library-${Date.now()}`,
         name: trimmedName,
-        questionCount: 0,
         wrongQuestionCount: 0,
       },
     ]);
@@ -45,7 +49,7 @@ export default function App() {
             </View>
             <View style={styles.libraryInfo}>
               <Text style={styles.libraryName}>{item.name}</Text>
-              <Text style={styles.libraryMeta}>共 {item.questionCount} 题 · {item.wrongQuestionCount} 道错题</Text>
+              <Text style={styles.libraryMeta}>共 {getQuestionCount(item.id)} 题 · {item.wrongQuestionCount} 道错题</Text>
             </View>
           </Pressable>
         )}
