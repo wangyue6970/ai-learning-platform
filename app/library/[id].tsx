@@ -13,7 +13,7 @@ const questionTypeLabels = {
 
 export default function LibraryDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { libraries, setLibraries } = useLibraries();
+  const { libraries, updateLibrary, deleteLibrary: deleteLibraryRequest } = useLibraries();
   const { learningStatuses } = useQuestionLearning();
   const [draftName, setDraftName] = useState('');
   const [isEditModalVisible, setIsEditModalVisible] = useState(false);
@@ -38,7 +38,7 @@ export default function LibraryDetailScreen() {
     setIsEditModalVisible(true);
   }
 
-  function saveLibraryName() {
+  async function saveLibraryName() {
     const trimmedName = draftName.trim();
 
     if (!trimmedName) {
@@ -46,19 +46,21 @@ export default function LibraryDetailScreen() {
       return;
     }
 
-    setLibraries((currentLibraries) =>
-      currentLibraries.map((library) =>
-        library.id === id ? { ...library, name: trimmedName } : library
-      )
-    );
-    setIsEditModalVisible(false);
+    try {
+      await updateLibrary(id, trimmedName);
+      setIsEditModalVisible(false);
+    } catch {
+      Alert.alert('修改失败', '请确认后端正在运行，并且手机和电脑在同一 Wi-Fi。');
+    }
   }
 
-  function deleteLibrary() {
-    setLibraries((currentLibraries) =>
-      currentLibraries.filter((library) => library.id !== id)
-    );
-    router.back();
+  async function deleteLibrary() {
+    try {
+      await deleteLibraryRequest(id);
+      router.back();
+    } catch {
+      Alert.alert('删除失败', '请确认后端正在运行，并且手机和电脑在同一 Wi-Fi。');
+    }
   }
 
   function confirmDeleteLibrary() {

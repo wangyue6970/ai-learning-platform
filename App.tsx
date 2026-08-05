@@ -11,7 +11,7 @@ function getQuestionCount(libraryId: string) {
 }
 
 export default function App() {
-  const { libraries, setLibraries } = useLibraries();
+  const { libraries, isLoading, error, createLibrary } = useLibraries();
   const { learningStatuses } = useQuestionLearning();
   const [draftName, setDraftName] = useState('');
   const [isCreateModalVisible, setIsCreateModalVisible] = useState(false);
@@ -22,7 +22,7 @@ export default function App() {
     ).length;
   }
 
-  function createLibrary() {
+  async function createNewLibrary() {
     const trimmedName = draftName.trim();
 
     if (!trimmedName) {
@@ -30,16 +30,13 @@ export default function App() {
       return;
     }
 
-    setLibraries((currentLibraries) => [
-      ...currentLibraries,
-      {
-        id: `local-library-${Date.now()}`,
-        name: trimmedName,
-        wrongQuestionCount: 0,
-      },
-    ]);
-    setDraftName('');
-    setIsCreateModalVisible(false);
+    try {
+      await createLibrary(trimmedName);
+      setDraftName('');
+      setIsCreateModalVisible(false);
+    } catch {
+      Alert.alert('创建失败', '请确认后端正在运行，并且手机和电脑在同一 Wi-Fi。');
+    }
   }
 
   return (
@@ -72,6 +69,11 @@ export default function App() {
             <Text style={styles.createButtonText}>＋ 新建学习库</Text>
           </Pressable>
         }
+        ListEmptyComponent={
+          <Text style={styles.emptyText}>
+            {isLoading ? '正在加载学习库...' : error ?? '暂时没有学习库'}
+          </Text>
+        }
       />
       <Modal animationType="fade" transparent visible={isCreateModalVisible}>
         <View style={{ flex: 1, justifyContent: 'center', padding: 20 }}>
@@ -82,7 +84,7 @@ export default function App() {
               value={draftName}
               onChangeText={setDraftName}
             />
-            <Pressable onPress={createLibrary}>
+            <Pressable onPress={() => void createNewLibrary()}>
               <Text>保存</Text>
             </Pressable>
             <Pressable onPress={() => {
@@ -167,5 +169,10 @@ const styles = StyleSheet.create({
     color: '#2563EB',
     fontSize: 15,
     fontWeight: '700',
+  },
+  emptyText: {
+    color: '#64748B',
+    marginTop: 20,
+    textAlign: 'center',
   },
 });
