@@ -7,9 +7,14 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import com.wangyue.backend.dto.CreateQuestionOptionRequest;
 import com.wangyue.backend.dto.CreateQuestionRequest;
+import com.wangyue.backend.entity.AnswerRecord;
 import com.wangyue.backend.entity.LearningLibrary;
 import com.wangyue.backend.entity.Question;
+import com.wangyue.backend.entity.WrongQuestion;
+import com.wangyue.backend.mapper.AnswerRecordMapper;
 import com.wangyue.backend.mapper.LearningLibraryMapper;
+import com.wangyue.backend.mapper.QuestionMapper;
+import com.wangyue.backend.mapper.WrongQuestionMapper;
 import com.wangyue.backend.service.LearningLibraryService;
 import com.wangyue.backend.service.QuestionService;
 import java.util.List;
@@ -32,6 +37,15 @@ class BackendApplicationTests {
 
 	@Autowired
 	private QuestionService questionService;
+
+	@Autowired
+	private AnswerRecordMapper answerRecordMapper;
+
+	@Autowired
+	private QuestionMapper questionMapper;
+
+	@Autowired
+	private WrongQuestionMapper wrongQuestionMapper;
 
 	@Test
 	void mysqlConnectionWorks() {
@@ -115,6 +129,66 @@ class BackendApplicationTests {
 			List<Question> questions = questionService.findByLibraryId(library.getId());
 			assertEquals(1, questions.size());
 			assertEquals(question.getId(), questions.get(0).getId());
+		} finally {
+			learningLibraryMapper.deleteById(library.getId());
+		}
+	}
+
+	@Test
+	void answerRecordCanBeInsertedAndFound() {
+		LearningLibrary library = learningLibraryService.create("answer-record-mapper-test");
+		try {
+			Question question = new Question();
+			question.setLibraryId(library.getId());
+			question.setQuestionType("SINGLE_CHOICE");
+			question.setStem("Mapper insert test question");
+			question.setCorrectAnswer("[\"A\"]");
+			questionMapper.insert(question);
+
+			AnswerRecord record = new AnswerRecord();
+			record.setLibraryId(library.getId());
+			record.setQuestionId(question.getId());
+			record.setSelectedAnswer("[\"B\"]");
+			record.setCorrect(false);
+
+			int affectedRows = answerRecordMapper.insert(record);
+			assertEquals(1, affectedRows);
+			assertNotNull(record.getId());
+
+			AnswerRecord savedRecord = answerRecordMapper.selectById(record.getId());
+			assertNotNull(savedRecord);
+			assertEquals(false, savedRecord.getCorrect());
+		} finally {
+			learningLibraryMapper.deleteById(library.getId());
+		}
+	}
+
+	@Test
+	void wrongQuestionCanBeUpdatedAndDeleted() {
+		LearningLibrary library = learningLibraryService.create("wrong-question-mapper-test");
+		try {
+			Question question = new Question();
+			question.setLibraryId(library.getId());
+			question.setQuestionType("SINGLE_CHOICE");
+			question.setStem("Mapper update and delete test question");
+			question.setCorrectAnswer("[\"A\"]");
+			questionMapper.insert(question);
+
+			WrongQuestion wrongQuestion = new WrongQuestion();
+			wrongQuestion.setLibraryId(library.getId());
+			wrongQuestion.setQuestionId(question.getId());
+			wrongQuestion.setConsecutiveCorrectCount(0);
+			wrongQuestionMapper.insert(wrongQuestion);
+
+			wrongQuestion.setConsecutiveCorrectCount(1);
+			assertEquals(1, wrongQuestionMapper.updateById(wrongQuestion));
+
+			WrongQuestion savedWrongQuestion = wrongQuestionMapper.selectById(wrongQuestion.getId());
+			assertNotNull(savedWrongQuestion);
+			assertEquals(1, savedWrongQuestion.getConsecutiveCorrectCount());
+
+			assertEquals(1, wrongQuestionMapper.deleteById(wrongQuestion.getId()));
+			assertNull(wrongQuestionMapper.selectById(wrongQuestion.getId()));
 		} finally {
 			learningLibraryMapper.deleteById(library.getId());
 		}
