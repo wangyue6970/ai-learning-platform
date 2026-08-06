@@ -5,9 +5,13 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
+import com.wangyue.backend.dto.CreateQuestionOptionRequest;
+import com.wangyue.backend.dto.CreateQuestionRequest;
 import com.wangyue.backend.entity.LearningLibrary;
+import com.wangyue.backend.entity.Question;
 import com.wangyue.backend.mapper.LearningLibraryMapper;
 import com.wangyue.backend.service.LearningLibraryService;
+import com.wangyue.backend.service.QuestionService;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -25,6 +29,9 @@ class BackendApplicationTests {
 
 	@Autowired
 	private LearningLibraryService learningLibraryService;
+
+	@Autowired
+	private QuestionService questionService;
 
 	@Test
 	void mysqlConnectionWorks() {
@@ -79,6 +86,38 @@ class BackendApplicationTests {
 		LearningLibrary library = learningLibraryService.create("temporary-delete-test");
 		learningLibraryService.delete(library.getId());
 		assertNull(learningLibraryService.findById(library.getId()));
+	}
+
+	@Test
+	void questionCanBeCreatedAndFoundByLibrary() {
+		LearningLibrary library = learningLibraryService.create("question-api-test");
+		try {
+			CreateQuestionOptionRequest optionA = new CreateQuestionOptionRequest();
+			optionA.setOptionKey("A");
+			optionA.setContent("wrong answer");
+			optionA.setSortOrder(1);
+
+			CreateQuestionOptionRequest optionB = new CreateQuestionOptionRequest();
+			optionB.setOptionKey("B");
+			optionB.setContent("correct answer");
+			optionB.setSortOrder(2);
+
+			CreateQuestionRequest request = new CreateQuestionRequest();
+			request.setLibraryId(library.getId());
+			request.setQuestionType("SINGLE_CHOICE");
+			request.setStem("Which option is correct?");
+			request.setCorrectAnswer(List.of("B"));
+			request.setOptions(List.of(optionA, optionB));
+
+			Question question = questionService.create(request);
+			assertNotNull(question.getId());
+
+			List<Question> questions = questionService.findByLibraryId(library.getId());
+			assertEquals(1, questions.size());
+			assertEquals(question.getId(), questions.get(0).getId());
+		} finally {
+			learningLibraryMapper.deleteById(library.getId());
+		}
 	}
 
 }
