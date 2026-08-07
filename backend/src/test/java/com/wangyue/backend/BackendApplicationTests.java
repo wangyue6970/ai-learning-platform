@@ -5,8 +5,11 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.wangyue.backend.dto.CreateQuestionOptionRequest;
 import com.wangyue.backend.dto.CreateQuestionRequest;
+import com.wangyue.backend.dto.SubmitAnswerRequest;
+import com.wangyue.backend.dto.SubmitAnswerResponse;
 import com.wangyue.backend.entity.AnswerRecord;
 import com.wangyue.backend.entity.LearningLibrary;
 import com.wangyue.backend.entity.Question;
@@ -17,6 +20,7 @@ import com.wangyue.backend.mapper.QuestionMapper;
 import com.wangyue.backend.mapper.WrongQuestionMapper;
 import com.wangyue.backend.service.LearningLibraryService;
 import com.wangyue.backend.service.QuestionService;
+import com.wangyue.backend.service.PracticeService;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -46,6 +50,9 @@ class BackendApplicationTests {
 
 	@Autowired
 	private WrongQuestionMapper wrongQuestionMapper;
+
+	@Autowired
+	private PracticeService practiceService;
 
 	@Test
 	void mysqlConnectionWorks() {
@@ -192,6 +199,50 @@ class BackendApplicationTests {
 		} finally {
 			learningLibraryMapper.deleteById(library.getId());
 		}
+	}
+
+	@Test
+	void wrongQuestionRuleWorksAcrossAnswerAttempts() {
+		LearningLibrary library = learningLibraryService.create("practice-rule-test");
+		try {
+			Question question = new Question();
+			question.setLibraryId(library.getId());
+			question.setQuestionType("SINGLE_CHOICE");
+			question.setStem("Practice rule test question");
+			question.setCorrectAnswer("[\"A\"]");
+			questionMapper.insert(question);
+
+			SubmitAnswerResponse firstWrong = practiceService.submitAnswer(answer(library.getId(), question.getId(), "B"));
+			assertEquals(false, firstWrong.getCorrect());
+			assertEquals(0, firstWrong.getConsecutiveCorrectCount());
+			assertEquals(1, practiceService.findWrongQuestionsByLibraryId(library.getId()).size());
+
+			SubmitAnswerResponse firstCorrect = practiceService.submitAnswer(answer(library.getId(), question.getId(), "A"));
+			assertEquals(1, firstCorrect.getConsecutiveCorrectCount());
+
+			SubmitAnswerResponse resetByWrongAnswer = practiceService.submitAnswer(answer(library.getId(), question.getId(), "B"));
+			assertEquals(0, resetByWrongAnswer.getConsecutiveCorrectCount());
+
+			assertEquals(1, practiceService.submitAnswer(answer(library.getId(), question.getId(), "A")).getConsecutiveCorrectCount());
+			SubmitAnswerResponse secondCorrect = practiceService.submitAnswer(answer(library.getId(), question.getId(), "A"));
+			assertEquals(true, secondCorrect.getRemovedFromWrongQuestions());
+			assertEquals(0, practiceService.findWrongQuestionsByLibraryId(library.getId()).size());
+			assertEquals(0, wrongQuestionMapper.selectCount(new LambdaQueryWrapper<WrongQuestion>()
+				.eq(WrongQuestion::getLibraryId, library.getId())
+				.eq(WrongQuestion::getQuestionId, question.getId())));
+			assertEquals(5, answerRecordMapper.selectCount(new LambdaQueryWrapper<AnswerRecord>()
+				.eq(AnswerRecord::getLibraryId, library.getId())));
+		} finally {
+			learningLibraryMapper.deleteById(library.getId());
+		}
+	}
+
+	private SubmitAnswerRequest answer(Long libraryId, Long questionId, String selectedAnswer) {
+		SubmitAnswerRequest request = new SubmitAnswerRequest();
+		request.setLibraryId(libraryId);
+		request.setQuestionId(questionId);
+		request.setSelectedAnswer(List.of(selectedAnswer));
+		return request;
 	}
 
 }
