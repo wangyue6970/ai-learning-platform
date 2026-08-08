@@ -1,23 +1,51 @@
 import { router, useLocalSearchParams } from 'expo-router';
+import { useEffect, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
-import { useQuestionLearning } from '../../../contexts/QuestionLearningContext';
-import { initialQuestions } from '../../../data/questions';
+import { fetchPracticeQuestions, fetchWrongQuestions, type PracticeQuestion } from '../../../services/questionApi';
 
 export default function PracticeOverviewScreen() {
   const { id, mode } = useLocalSearchParams<{ id: string; mode?: string }>();
-  const { learningStatuses } = useQuestionLearning();
   const isWrongPractice = mode === 'wrong';
-  const libraryQuestions = initialQuestions.filter(
-    (question) =>
-      question.libraryId === id &&
-      (!isWrongPractice ||
-        learningStatuses.some(
-          (status) => status.questionId === question.id && status.isInWrongSet
-        ))
-  );
-  const singleChoiceCount = libraryQuestions.filter((question) => question.type === 'single_choice').length;
-  const multipleChoiceCount = libraryQuestions.filter((question) => question.type === 'multiple_choice').length;
-  const trueFalseCount = libraryQuestions.filter((question) => question.type === 'true_false').length;
+  const [questions, setQuestions] = useState<PracticeQuestion[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    async function loadQuestions() {
+      if (!id) {
+        setError('学习库不存在');
+        setIsLoading(false);
+        return;
+      }
+
+      setIsLoading(true);
+      setError(null);
+      try {
+        const loadedQuestions = isWrongPractice
+          ? await fetchWrongQuestions(id)
+          : await fetchPracticeQuestions(id);
+        setQuestions(loadedQuestions);
+      } catch {
+        setError('无法加载题目，请检查后端是否已启动');
+      } finally {
+        setIsLoading(false);
+      }
+    }
+
+    void loadQuestions();
+  }, [id, isWrongPractice]);
+
+  const singleChoiceCount = questions.filter((question) => question.type === 'single_choice').length;
+  const multipleChoiceCount = questions.filter((question) => question.type === 'multiple_choice').length;
+  const trueFalseCount = questions.filter((question) => question.type === 'true_false').length;
+
+  if (isLoading) {
+    return <Text>题目加载中...</Text>;
+  }
+
+  if (error) {
+    return <Text>{error}</Text>;
+  }
 
   return (
     <View style={{ flex: 1, padding: 20, paddingTop: 64 }}>

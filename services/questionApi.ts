@@ -25,7 +25,15 @@ const questionTypeMap: Record<PracticeQuestionResponse['questionType'], Practice
 };
 
 export async function fetchPracticeQuestions(libraryId: string): Promise<PracticeQuestion[]> {
-  const response = await fetch(`${API_BASE_URL}/api/questions/library/${libraryId}`);
+  return fetchQuestions(`/api/questions/library/${libraryId}`);
+}
+
+export async function fetchWrongQuestions(libraryId: string): Promise<PracticeQuestion[]> {
+  return fetchQuestions(`/api/practice/wrong-questions/library/${libraryId}`);
+}
+
+async function fetchQuestions(path: string): Promise<PracticeQuestion[]> {
+  const response = await fetch(`${API_BASE_URL}${path}`);
 
   if (!response.ok) {
     throw new Error('题目加载失败');
