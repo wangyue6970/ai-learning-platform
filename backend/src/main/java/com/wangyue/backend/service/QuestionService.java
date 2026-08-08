@@ -5,13 +5,18 @@ import com.wangyue.backend.dto.CreateQuestionRequest;
 import com.wangyue.backend.dto.CreateQuestionOptionRequest;
 import com.wangyue.backend.dto.PracticeQuestionResponse;
 import com.wangyue.backend.dto.QuestionDetailResponse;
+import com.wangyue.backend.dto.UpdateQuestionRequest;
 import com.wangyue.backend.dto.QuestionOptionResponse;
 import com.wangyue.backend.entity.Question;
 import com.wangyue.backend.entity.QuestionOption;
 import com.wangyue.backend.mapper.QuestionMapper;
 import com.wangyue.backend.mapper.QuestionOptionMapper;
+import com.wangyue.backend.mapper.WrongQuestionMapper;
+import com.wangyue.backend.entity.WrongQuestion;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.HashSet;
+import java.util.Set;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.core.JacksonException;
@@ -24,17 +29,20 @@ public class QuestionService {
     private final LearningLibraryService learningLibraryService;
     private final QuestionMapper questionMapper;
     private final QuestionOptionMapper questionOptionMapper;
+    private final WrongQuestionMapper wrongQuestionMapper;
     private final ObjectMapper objectMapper;
 
     public QuestionService(
         LearningLibraryService learningLibraryService,
         QuestionMapper questionMapper,
         QuestionOptionMapper questionOptionMapper,
+        WrongQuestionMapper wrongQuestionMapper,
         ObjectMapper objectMapper
     ) {
         this.learningLibraryService = learningLibraryService;
         this.questionMapper = questionMapper;
         this.questionOptionMapper = questionOptionMapper;
+        this.wrongQuestionMapper = wrongQuestionMapper;
         this.objectMapper = objectMapper;
     }
 
@@ -72,6 +80,28 @@ public class QuestionService {
         }
         if (request.getOptions() == null || request.getOptions().isEmpty()) {
             throw new IllegalArgumentException("选项不能为空");
+        }
+    }
+
+    private void validateUpdateRequest(UpdateQuestionRequest request) {
+        if (request == null || request.getQuestionType() == null || request.getQuestionType().isBlank()
+            || request.getStem() == null || request.getStem().isBlank()
+            || request.getCorrectAnswer() == null || request.getCorrectAnswer().isEmpty()
+            || request.getOptions() == null || request.getOptions().isEmpty()) {
+            throw new IllegalArgumentException("题型、题干、选项和正确答案不能为空");
+        }
+
+        Set<String> optionKeys = new HashSet<>();
+        for (CreateQuestionOptionRequest option : request.getOptions()) {
+            if (option.getOptionKey() == null || option.getOptionKey().isBlank()
+                || option.getContent() == null || option.getContent().isBlank()
+                || !optionKeys.add(option.getOptionKey())) {
+                throw new IllegalArgumentException("选项内容不能为空，且选项标识不能重复");
+            }
+        }
+
+        if (!optionKeys.containsAll(request.getCorrectAnswer())) {
+            throw new IllegalArgumentException("正确答案必须属于当前选项");
         }
     }
 
@@ -139,6 +169,42 @@ public class QuestionService {
         response.setCorrectAnswer(readAnswers(question.getCorrectAnswer()));
         response.setExplanation(question.getExplanation());
         return response;
+    }
+
+    @Transactional
+    public QuestionDetailResponse update(Long id, UpdateQuestionRequest request) {
+        validateUpdateRequest(request);
+
+        Question question = questionMapper.selectById(id);
+        if (question == null) {
+            throw new IllegalArgumentException("题目不存在");
+        }
+
+        String updatedAnswer = toJson(request.getCorrectAnswer());
+        boolean answerChanged = !updatedAnswer.equals(question.getCorrectAnswer());
+        question.setQuestionType(request.getQuestionType());
+        question.setStem(request.getStem());
+        question.setCorrectAnswer(updatedAnswer);
+        question.setExplanation(request.getExplanation());
+        questionMapper.updateById(question);
+
+        questionOptionMapper.delete(new LambdaQueryWrapper<QuestionOption>()
+            .eq(QuestionOption::getQuestionId, id));
+        for (CreateQuestionOptionRequest optionRequest : request.getOptions()) {
+            QuestionOption option = new QuestionOption();
+            option.setQuestionId(id);
+            option.setOptionKey(optionRequest.getOptionKey());
+            option.setContent(optionRequest.getContent());
+            option.setSortOrder(optionRequest.getSortOrder());
+            questionOptionMapper.insert(option);
+        }
+
+        if (answerChanged) {
+            wrongQuestionMapper.delete(new LambdaQueryWrapper<WrongQuestion>()
+                .eq(WrongQuestion::getQuestionId, id));
+        }
+
+        return findDetailById(id);
     }
 
     public List<PracticeQuestionResponse> findPracticeByLibraryId(Long libraryId) {
