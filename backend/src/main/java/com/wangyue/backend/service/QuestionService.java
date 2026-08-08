@@ -207,6 +207,14 @@ public class QuestionService {
         return findDetailById(id);
     }
 
+    public void delete(Long id) {
+        Question question = questionMapper.selectById(id);
+        if (question == null) {
+            throw new IllegalArgumentException("题目不存在");
+        }
+        questionMapper.deleteById(id);
+    }
+
     public List<PracticeQuestionResponse> findPracticeByLibraryId(Long libraryId) {
         List<PracticeQuestionResponse> responses = new ArrayList<>();
 
