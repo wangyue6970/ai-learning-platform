@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.wangyue.backend.dto.CreateQuestionRequest;
 import com.wangyue.backend.dto.CreateQuestionOptionRequest;
 import com.wangyue.backend.dto.PracticeQuestionResponse;
+import com.wangyue.backend.dto.QuestionDetailResponse;
 import com.wangyue.backend.dto.QuestionOptionResponse;
 import com.wangyue.backend.entity.Question;
 import com.wangyue.backend.entity.QuestionOption;
@@ -14,6 +15,7 @@ import java.util.List;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.core.JacksonException;
+import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.ObjectMapper;
 
 @Service
@@ -41,6 +43,14 @@ public class QuestionService {
             return objectMapper.writeValueAsString(values);
         } catch (JacksonException exception) {
             throw new IllegalArgumentException("正确答案格式错误", exception);
+        }
+    }
+
+    private List<String> readAnswers(String jsonText) {
+        try {
+            return objectMapper.readValue(jsonText, new TypeReference<List<String>>() {});
+        } catch (JacksonException exception) {
+            throw new IllegalStateException("题目正确答案格式错误", exception);
         }
     }
 
@@ -100,6 +110,35 @@ public class QuestionService {
                 .eq(Question::getLibraryId, libraryId)
                 .orderByAsc(Question::getId)
         );
+    }
+
+    public QuestionDetailResponse findDetailById(Long id) {
+        Question question = questionMapper.selectById(id);
+        if (question == null) {
+            throw new IllegalArgumentException("题目不存在");
+        }
+
+        List<QuestionOptionResponse> optionResponses = questionOptionMapper.selectList(
+            new LambdaQueryWrapper<QuestionOption>()
+                .eq(QuestionOption::getQuestionId, question.getId())
+                .orderByAsc(QuestionOption::getSortOrder)
+        ).stream().map(option -> {
+            QuestionOptionResponse response = new QuestionOptionResponse();
+            response.setOptionKey(option.getOptionKey());
+            response.setContent(option.getContent());
+            response.setSortOrder(option.getSortOrder());
+            return response;
+        }).toList();
+
+        QuestionDetailResponse response = new QuestionDetailResponse();
+        response.setId(question.getId());
+        response.setLibraryId(question.getLibraryId());
+        response.setQuestionType(question.getQuestionType());
+        response.setStem(question.getStem());
+        response.setOptions(optionResponses);
+        response.setCorrectAnswer(readAnswers(question.getCorrectAnswer()));
+        response.setExplanation(question.getExplanation());
+        return response;
     }
 
     public List<PracticeQuestionResponse> findPracticeByLibraryId(Long libraryId) {

@@ -2,6 +2,7 @@ package com.wangyue.backend.controller;
 
 import com.wangyue.backend.dto.CreateQuestionRequest;
 import com.wangyue.backend.dto.PracticeQuestionResponse;
+import com.wangyue.backend.dto.QuestionDetailResponse;
 import com.wangyue.backend.entity.Question;
 import com.wangyue.backend.service.QuestionService;
 import java.util.List;
@@ -30,5 +31,10 @@ public class QuestionController {
     @GetMapping("/library/{libraryId}")
     public List<PracticeQuestionResponse> findByLibraryId(@PathVariable Long libraryId) {
         return questionService.findPracticeByLibraryId(libraryId);
+    }
+
+    @GetMapping("/{id}")
+    public QuestionDetailResponse findDetailById(@PathVariable Long id) {
+        return questionService.findDetailById(id);
     }
 }
