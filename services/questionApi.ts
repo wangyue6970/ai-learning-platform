@@ -10,6 +10,14 @@ export type PracticeQuestion = {
   options: Array<{ id: string; text: string }>;
 };
 
+export type SubmitAnswerResult = {
+  correct: boolean;
+  correctAnswer: string[];
+  explanation: string | null;
+  consecutiveCorrectCount: number;
+  removedFromWrongQuestions: boolean;
+};
+
 type PracticeQuestionResponse = {
   id: number;
   libraryId: number;
@@ -30,6 +38,24 @@ export async function fetchPracticeQuestions(libraryId: string): Promise<Practic
 
 export async function fetchWrongQuestions(libraryId: string): Promise<PracticeQuestion[]> {
   return fetchQuestions(`/api/practice/wrong-questions/library/${libraryId}`);
+}
+
+export async function submitAnswer(
+  libraryId: string,
+  questionId: string,
+  selectedAnswer: string[]
+): Promise<SubmitAnswerResult> {
+  const response = await fetch(`${API_BASE_URL}/api/practice/answers`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ libraryId: Number(libraryId), questionId: Number(questionId), selectedAnswer }),
+  });
+
+  if (!response.ok) {
+    throw new Error('答案提交失败');
+  }
+
+  return response.json();
 }
 
 async function fetchQuestions(path: string): Promise<PracticeQuestion[]> {
