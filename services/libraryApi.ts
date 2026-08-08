@@ -1,3 +1,5 @@
+import { API_BASE_URL } from './apiConfig';
+
 export type Library = {
   id: string;
   name: string;
@@ -7,8 +9,6 @@ export type Library = {
 };
 
 type LibraryResponse = Omit<Library, 'id' | 'wrongQuestionCount'> & { id: number };
-
-const API_BASE_URL = 'http://192.168.10.6:8080';
 
 export async function fetchLibraries(): Promise<Library[]> {
   const response = await fetch(`${API_BASE_URL}/api/libraries`);
