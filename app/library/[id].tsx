@@ -1,9 +1,8 @@
-import { router, useLocalSearchParams } from 'expo-router';
-import { useState } from 'react';
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { useCallback, useState } from 'react';
 import { Alert, Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useLibraries } from '../../contexts/LibraryContext';
-import { useQuestionLearning } from '../../contexts/QuestionLearningContext';
-import { initialQuestions } from '../../data/questions';
+import { fetchPracticeQuestions, fetchWrongQuestions, type PracticeQuestion } from '../../services/questionApi';
 
 const questionTypeLabels = {
   single_choice: '单选题',
@@ -14,14 +13,40 @@ const questionTypeLabels = {
 export default function LibraryDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { libraries, updateLibrary, deleteLibrary: deleteLibraryRequest } = useLibraries();
-  const { learningStatuses } = useQuestionLearning();
   const [draftName, setDraftName] = useState('');
   const [isEditModalVisible, setIsEditModalVisible] = useState(false);
+  const [libraryQuestions, setLibraryQuestions] = useState<PracticeQuestion[]>([]);
+  const [wrongQuestionCount, setWrongQuestionCount] = useState(0);
+  const [isQuestionSummaryLoading, setIsQuestionSummaryLoading] = useState(true);
+  const [questionSummaryError, setQuestionSummaryError] = useState<string | null>(null);
   const selectedLibrary = libraries.find((library) => library.id === id);
-  const libraryQuestions = initialQuestions.filter((question) => question.libraryId === id);
-  const wrongQuestionCount = learningStatuses.filter(
-    (status) => status.libraryId === id && status.isInWrongSet
-  ).length;
+
+  const reloadQuestionSummary = useCallback(async () => {
+    if (!id) {
+      return;
+    }
+
+    setIsQuestionSummaryLoading(true);
+    setQuestionSummaryError(null);
+    try {
+      const [questions, wrongQuestions] = await Promise.all([
+        fetchPracticeQuestions(id),
+        fetchWrongQuestions(id),
+      ]);
+      setLibraryQuestions(questions);
+      setWrongQuestionCount(wrongQuestions.length);
+    } catch {
+      setQuestionSummaryError('题目统计加载失败，请检查后端是否已启动');
+    } finally {
+      setIsQuestionSummaryLoading(false);
+    }
+  }, [id]);
+
+  useFocusEffect(
+    useCallback(() => {
+      void reloadQuestionSummary();
+    }, [reloadQuestionSummary])
+  );
 
   function showNextStageMessage(featureName: string) {
     Alert.alert(featureName, '这个功能会在后续阶段实现。');
