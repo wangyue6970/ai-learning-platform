@@ -12,10 +12,12 @@ import com.wangyue.backend.dto.CreateQuestionRequest;
 import com.wangyue.backend.dto.SubmitAnswerRequest;
 import com.wangyue.backend.dto.SubmitAnswerResponse;
 import com.wangyue.backend.entity.AnswerRecord;
+import com.wangyue.backend.entity.AppUser;
 import com.wangyue.backend.entity.LearningLibrary;
 import com.wangyue.backend.entity.Question;
 import com.wangyue.backend.entity.WrongQuestion;
 import com.wangyue.backend.mapper.AnswerRecordMapper;
+import com.wangyue.backend.mapper.AppUserMapper;
 import com.wangyue.backend.mapper.LearningLibraryMapper;
 import com.wangyue.backend.mapper.QuestionMapper;
 import com.wangyue.backend.mapper.WrongQuestionMapper;
@@ -59,6 +61,9 @@ class BackendApplicationTests {
 	@Autowired
 	private PasswordEncoder passwordEncoder;
 
+	@Autowired
+	private AppUserMapper appUserMapper;
+
 	@Test
 	void passwordIsHashedAndCanBeVerified() {
 		String rawPassword = "demo-password-123";
@@ -67,6 +72,23 @@ class BackendApplicationTests {
 		assertNotEquals(rawPassword, passwordHash);
 		assertEquals(true, passwordEncoder.matches(rawPassword, passwordHash));
 		assertEquals(false, passwordEncoder.matches("wrong-password", passwordHash));
+	}
+
+	@Test
+	void appUserCanBeInsertedAndFound() {
+		AppUser user = new AppUser();
+		user.setUsername("app-user-mapper-test-" + System.nanoTime());
+		user.setPasswordHash(passwordEncoder.encode("demo-password-123"));
+		appUserMapper.insert(user);
+
+		try {
+			AppUser savedUser = appUserMapper.selectById(user.getId());
+			assertNotNull(savedUser);
+			assertEquals(user.getUsername(), savedUser.getUsername());
+			assertNotEquals("demo-password-123", savedUser.getPasswordHash());
+		} finally {
+			appUserMapper.deleteById(user.getId());
+		}
 	}
 
 	@Test
