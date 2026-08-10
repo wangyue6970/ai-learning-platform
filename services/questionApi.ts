@@ -15,6 +15,14 @@ export type EditableQuestion = PracticeQuestion & {
   explanation: string | null;
 };
 
+export type UpdateQuestionPayload = {
+  questionType: 'SINGLE_CHOICE' | 'MULTIPLE_CHOICE' | 'TRUE_FALSE';
+  stem: string;
+  options: Array<{ optionKey: string; content: string; sortOrder: number }>;
+  correctAnswer: string[];
+  explanation: string | null;
+};
+
 export type SubmitAnswerResult = {
   correct: boolean;
   correctAnswer: string[];
@@ -55,6 +63,28 @@ export async function fetchQuestionDetail(questionId: string): Promise<EditableQ
 
   if (!response.ok) {
     throw new Error('题目详情加载失败');
+  }
+
+  const question: QuestionDetailResponse = await response.json();
+  return {
+    ...normalizePracticeQuestion(question),
+    correctAnswer: question.correctAnswer,
+    explanation: question.explanation,
+  };
+}
+
+export async function updateQuestion(
+  questionId: string,
+  payload: UpdateQuestionPayload
+): Promise<EditableQuestion> {
+  const response = await fetch(`${API_BASE_URL}/api/questions/${questionId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    throw new Error('题目保存失败');
   }
 
   const question: QuestionDetailResponse = await response.json();
