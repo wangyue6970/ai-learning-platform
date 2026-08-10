@@ -1,7 +1,7 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import { fetchQuestionDetail, type EditableQuestion, updateQuestion } from '../../../../services/questionApi';
+import { deleteQuestion, fetchQuestionDetail, type EditableQuestion, updateQuestion } from '../../../../services/questionApi';
 
 const questionTypeLabels = {
   single_choice: '单选题',
@@ -21,6 +21,7 @@ export default function QuestionDetailScreen() {
   const [error, setError] = useState<string | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [draftStem, setDraftStem] = useState('');
   const [draftOptions, setDraftOptions] = useState<Array<{ id: string; text: string }>>([]);
   const [draftCorrectAnswer, setDraftCorrectAnswer] = useState<string[]>([]);
@@ -101,6 +102,25 @@ export default function QuestionDetailScreen() {
     }
   }
 
+  async function deleteCurrentQuestion() {
+    setIsDeleting(true);
+    try {
+      await deleteQuestion(questionId);
+      router.back();
+    } catch {
+      Alert.alert('删除失败', '请检查后端是否已启动后重试。');
+    } finally {
+      setIsDeleting(false);
+    }
+  }
+
+  function confirmDeleteQuestion() {
+    Alert.alert('删除题目', '删除后将同时清除相关作答记录和错题状态，无法恢复。确定删除吗？', [
+      { text: '取消', style: 'cancel' },
+      { text: '删除', style: 'destructive', onPress: () => void deleteCurrentQuestion() },
+    ]);
+  }
+
   if (error) {
     return <View style={styles.centerState}><Text>{error}</Text></View>;
   }
@@ -172,6 +192,11 @@ export default function QuestionDetailScreen() {
           </Pressable>
         </View>
       )}
+      {!isEditing && (
+        <Pressable style={styles.deleteButton} onPress={confirmDeleteQuestion} disabled={isDeleting}>
+          <Text style={styles.deleteButtonText}>{isDeleting ? '删除中...' : '删除题目'}</Text>
+        </Pressable>
+      )}
     </ScrollView>
   );
 }
@@ -199,4 +224,6 @@ const styles = StyleSheet.create({
   cancelButtonText: { color: '#475569', fontWeight: '700' },
   saveButton: { alignItems: 'center', backgroundColor: '#2563EB', borderRadius: 10, flex: 1, padding: 14 },
   saveButtonText: { color: '#FFFFFF', fontWeight: '700' },
+  deleteButton: { alignItems: 'center', borderColor: '#DC2626', borderRadius: 10, borderWidth: 1, marginTop: 28, padding: 14 },
+  deleteButtonText: { color: '#DC2626', fontWeight: '700' },
 });

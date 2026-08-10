@@ -95,6 +95,16 @@ export async function updateQuestion(
   };
 }
 
+export async function deleteQuestion(questionId: string): Promise<void> {
+  const response = await fetch(`${API_BASE_URL}/api/questions/${questionId}`, {
+    method: 'DELETE',
+  });
+
+  if (!response.ok) {
+    throw new Error('题目删除失败');
+  }
+}
+
 export async function submitAnswer(
   libraryId: string,
   questionId: string,
