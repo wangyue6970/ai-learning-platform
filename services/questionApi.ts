@@ -10,6 +10,11 @@ export type PracticeQuestion = {
   options: Array<{ id: string; text: string }>;
 };
 
+export type EditableQuestion = PracticeQuestion & {
+  correctAnswer: string[];
+  explanation: string | null;
+};
+
 export type SubmitAnswerResult = {
   correct: boolean;
   correctAnswer: string[];
@@ -26,6 +31,11 @@ type PracticeQuestionResponse = {
   options: Array<{ optionKey: string; content: string; sortOrder: number }>;
 };
 
+type QuestionDetailResponse = PracticeQuestionResponse & {
+  correctAnswer: string[];
+  explanation: string | null;
+};
+
 const questionTypeMap: Record<PracticeQuestionResponse['questionType'], PracticeQuestionType> = {
   SINGLE_CHOICE: 'single_choice',
   MULTIPLE_CHOICE: 'multiple_choice',
@@ -38,6 +48,21 @@ export async function fetchPracticeQuestions(libraryId: string): Promise<Practic
 
 export async function fetchWrongQuestions(libraryId: string): Promise<PracticeQuestion[]> {
   return fetchQuestions(`/api/practice/wrong-questions/library/${libraryId}`);
+}
+
+export async function fetchQuestionDetail(questionId: string): Promise<EditableQuestion> {
+  const response = await fetch(`${API_BASE_URL}/api/questions/${questionId}`);
+
+  if (!response.ok) {
+    throw new Error('题目详情加载失败');
+  }
+
+  const question: QuestionDetailResponse = await response.json();
+  return {
+    ...normalizePracticeQuestion(question),
+    correctAnswer: question.correctAnswer,
+    explanation: question.explanation,
+  };
 }
 
 export async function submitAnswer(

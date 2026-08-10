@@ -108,10 +108,17 @@ export default function LibraryDetailScreen() {
         <Text style={styles.emptyText}>暂无题目，后续可通过“导入题目”加入题库。</Text>
       ) : (
         libraryQuestions.map((question) => (
-          <View key={question.id} style={styles.questionCard}>
+          <Pressable
+            key={question.id}
+            style={styles.questionCard}
+            onPress={() => router.push({
+              pathname: '/library/[id]/questions/[questionId]',
+              params: { id, questionId: question.id },
+            })}>
             <Text style={styles.questionType}>{questionTypeLabels[question.type]}</Text>
             <Text style={styles.questionStem}>{question.stem}</Text>
-          </View>
+            <Text style={styles.questionHint}>点击查看题目详情</Text>
+          </Pressable>
         ))
       )}
       <Pressable style={styles.actionButton} onPress={openEditModal}>
@@ -196,6 +203,11 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
     marginBottom: 6,
+  },
+  questionHint: {
+    color: '#64748B',
+    fontSize: 13,
+    marginTop: 10,
   },
   emptyText: {
     color: '#64748B',
