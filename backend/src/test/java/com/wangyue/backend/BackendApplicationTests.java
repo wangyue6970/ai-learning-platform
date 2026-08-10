@@ -1,6 +1,7 @@
 package com.wangyue.backend;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -26,6 +27,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.security.crypto.password.PasswordEncoder;
 
 @SpringBootTest
 class BackendApplicationTests {
@@ -53,6 +55,19 @@ class BackendApplicationTests {
 
 	@Autowired
 	private PracticeService practiceService;
+
+	@Autowired
+	private PasswordEncoder passwordEncoder;
+
+	@Test
+	void passwordIsHashedAndCanBeVerified() {
+		String rawPassword = "demo-password-123";
+		String passwordHash = passwordEncoder.encode(rawPassword);
+
+		assertNotEquals(rawPassword, passwordHash);
+		assertEquals(true, passwordEncoder.matches(rawPassword, passwordHash));
+		assertEquals(false, passwordEncoder.matches("wrong-password", passwordHash));
+	}
 
 	@Test
 	void mysqlConnectionWorks() {
