@@ -129,7 +129,7 @@ export default function LibraryDetailScreen() {
       </Pressable>
       <Pressable
         style={styles.primaryButton}
-        onPress={() => showNextStageMessage('导入题目')}>
+        onPress={() => router.push(`/library/${id}/import`)}>
         <Text style={styles.primaryButtonText}>导入题目</Text>
       </Pressable>
       <Pressable style={styles.actionButton} onPress={() => router.push(`/library/${id}/practice`)}>

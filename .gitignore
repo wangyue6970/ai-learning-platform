@@ -33,6 +33,9 @@ yarn-error.*
 # local env files
 .env*.local
 
+# local uploaded import files
+/backend/uploads/
+
 # typescript
 *.tsbuildinfo
 

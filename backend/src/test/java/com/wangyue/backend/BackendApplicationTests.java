@@ -15,11 +15,13 @@ import com.wangyue.backend.dto.SubmitAnswerResponse;
 import com.wangyue.backend.entity.AnswerRecord;
 import com.wangyue.backend.entity.AppUser;
 import com.wangyue.backend.entity.LearningLibrary;
+import com.wangyue.backend.entity.ImportFile;
 import com.wangyue.backend.entity.Question;
 import com.wangyue.backend.entity.WrongQuestion;
 import com.wangyue.backend.mapper.AnswerRecordMapper;
 import com.wangyue.backend.mapper.AppUserMapper;
 import com.wangyue.backend.mapper.LearningLibraryMapper;
+import com.wangyue.backend.mapper.ImportFileMapper;
 import com.wangyue.backend.mapper.QuestionMapper;
 import com.wangyue.backend.mapper.WrongQuestionMapper;
 import com.wangyue.backend.service.LearningLibraryService;
@@ -27,6 +29,8 @@ import com.wangyue.backend.service.AuthService;
 import com.wangyue.backend.service.QuestionService;
 import com.wangyue.backend.service.PracticeService;
 import java.util.List;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -35,8 +39,11 @@ import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.mock.web.MockMultipartFile;
+import org.springframework.test.web.servlet.MvcResult;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -76,6 +83,9 @@ class BackendApplicationTests {
 
 	@Autowired
 	private AuthService authService;
+
+	@Autowired
+	private ImportFileMapper importFileMapper;
 
 	@Autowired
 	private MockMvc mockMvc;
@@ -144,6 +154,61 @@ class BackendApplicationTests {
 			assertEquals(true, passwordEncoder.matches("demo-password-123", user.getPasswordHash()));
 		} finally {
 			appUserMapper.deleteById(user.getId());
+		}
+	}
+
+	@Test
+	void importApiKeepsOtherFilesWhenOneFileFails() throws Exception {
+		LearningLibrary library = learningLibraryService.create("import-api-test-" + System.nanoTime());
+		String imageFileName = "question-" + System.nanoTime() + ".png";
+		try {
+			MockMultipartFile image = new MockMultipartFile(
+				"files", imageFileName, "image/png", "test image".getBytes()
+			);
+			MockMultipartFile unsupportedFile = new MockMultipartFile(
+				"files", "unsupported.pdf", "application/pdf", "test pdf".getBytes()
+			);
+
+			mockMvc.perform(multipart("/api/libraries/" + library.getId() + "/import-batches")
+				.file(image)
+				.file(unsupportedFile))
+				.andExpect(status().isCreated())
+				.andExpect(jsonPath("$.libraryId").value(library.getId()))
+				.andExpect(jsonPath("$.status").value("WAITING_RECOGNITION"))
+				.andExpect(jsonPath("$.files.length()").value(2))
+				.andExpect(jsonPath("$.files[0].status").value("WAITING_RECOGNITION"))
+				.andExpect(jsonPath("$.files[1].status").value("UPLOAD_FAILED"))
+				.andExpect(jsonPath("$.files[1].errorMessage").isNotEmpty())
+				.andExpect(jsonPath("$.files[0].storedFilePath").doesNotExist());
+		} finally {
+			List<ImportFile> importedFiles = importFileMapper.selectList(
+				new LambdaQueryWrapper<ImportFile>()
+					.eq(ImportFile::getOriginalFileName, imageFileName)
+			);
+			for (ImportFile importFile : importedFiles) {
+				if (importFile.getStoredFilePath() != null) {
+					Files.deleteIfExists(Path.of(importFile.getStoredFilePath()));
+				}
+			}
+			learningLibraryMapper.deleteById(library.getId());
+		}
+	}
+
+	@Test
+	void importBatchIsMarkedFailedWhenEveryFileFails() throws Exception {
+		LearningLibrary library = learningLibraryService.create("failed-import-api-test-" + System.nanoTime());
+		try {
+			MockMultipartFile unsupportedFile = new MockMultipartFile(
+				"files", "unsupported.pdf", "application/pdf", "test pdf".getBytes()
+			);
+
+			mockMvc.perform(multipart("/api/libraries/" + library.getId() + "/import-batches")
+				.file(unsupportedFile))
+				.andExpect(status().isCreated())
+				.andExpect(jsonPath("$.status").value("UPLOAD_FAILED"))
+				.andExpect(jsonPath("$.files[0].status").value("UPLOAD_FAILED"));
+		} finally {
+			learningLibraryMapper.deleteById(library.getId());
 		}
 	}
 
