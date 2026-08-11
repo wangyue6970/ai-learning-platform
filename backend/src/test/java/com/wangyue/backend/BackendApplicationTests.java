@@ -9,6 +9,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.wangyue.backend.dto.CreateQuestionOptionRequest;
 import com.wangyue.backend.dto.CreateQuestionRequest;
+import com.wangyue.backend.dto.RegisterRequest;
 import com.wangyue.backend.dto.SubmitAnswerRequest;
 import com.wangyue.backend.dto.SubmitAnswerResponse;
 import com.wangyue.backend.entity.AnswerRecord;
@@ -22,6 +23,7 @@ import com.wangyue.backend.mapper.LearningLibraryMapper;
 import com.wangyue.backend.mapper.QuestionMapper;
 import com.wangyue.backend.mapper.WrongQuestionMapper;
 import com.wangyue.backend.service.LearningLibraryService;
+import com.wangyue.backend.service.AuthService;
 import com.wangyue.backend.service.QuestionService;
 import com.wangyue.backend.service.PracticeService;
 import java.util.List;
@@ -64,6 +66,9 @@ class BackendApplicationTests {
 	@Autowired
 	private AppUserMapper appUserMapper;
 
+	@Autowired
+	private AuthService authService;
+
 	@Test
 	void passwordIsHashedAndCanBeVerified() {
 		String rawPassword = "demo-password-123";
@@ -86,6 +91,24 @@ class BackendApplicationTests {
 			assertNotNull(savedUser);
 			assertEquals(user.getUsername(), savedUser.getUsername());
 			assertNotEquals("demo-password-123", savedUser.getPasswordHash());
+		} finally {
+			appUserMapper.deleteById(user.getId());
+		}
+	}
+
+	@Test
+	void userCanRegisterWithHashedPasswordAndDuplicateUsernameIsRejected() {
+		String username = "registered-user-" + System.nanoTime();
+		RegisterRequest request = new RegisterRequest();
+		request.setUsername("  " + username + "  ");
+		request.setPassword("demo-password-123");
+
+		AppUser user = authService.register(request);
+		try {
+			assertNotNull(user.getId());
+			assertEquals(username, user.getUsername());
+			assertEquals(true, passwordEncoder.matches("demo-password-123", user.getPasswordHash()));
+			assertThrows(IllegalArgumentException.class, () -> authService.register(request));
 		} finally {
 			appUserMapper.deleteById(user.getId());
 		}
