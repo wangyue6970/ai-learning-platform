@@ -30,10 +30,18 @@ import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.test.web.servlet.MockMvc;
+
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @SpringBootTest
+@AutoConfigureMockMvc
 class BackendApplicationTests {
 
 	@Autowired
@@ -68,6 +76,9 @@ class BackendApplicationTests {
 
 	@Autowired
 	private AuthService authService;
+
+	@Autowired
+	private MockMvc mockMvc;
 
 	@Test
 	void passwordIsHashedAndCanBeVerified() {
@@ -109,6 +120,28 @@ class BackendApplicationTests {
 			assertEquals(username, user.getUsername());
 			assertEquals(true, passwordEncoder.matches("demo-password-123", user.getPasswordHash()));
 			assertThrows(IllegalArgumentException.class, () -> authService.register(request));
+		} finally {
+			appUserMapper.deleteById(user.getId());
+		}
+	}
+
+	@Test
+	void registerApiCreatesUserAndDoesNotExposePasswordHash() throws Exception {
+		String username = "register-api-" + System.nanoTime();
+
+		mockMvc.perform(post("/api/auth/register")
+			.contentType(MediaType.APPLICATION_JSON)
+			.content("{\"username\":\"" + username + "\",\"password\":\"demo-password-123\"}"))
+			.andExpect(status().isCreated())
+			.andExpect(jsonPath("$.id").isNumber())
+			.andExpect(jsonPath("$.username").value(username))
+			.andExpect(jsonPath("$.passwordHash").doesNotExist())
+			.andExpect(jsonPath("$.password").doesNotExist());
+
+		AppUser user = authService.findByUsername(username);
+		try {
+			assertNotNull(user);
+			assertEquals(true, passwordEncoder.matches("demo-password-123", user.getPasswordHash()));
 		} finally {
 			appUserMapper.deleteById(user.getId());
 		}
