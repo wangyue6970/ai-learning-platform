@@ -17,6 +17,7 @@ public class ImportFile {
     private Long fileSizeBytes;
     private String status;
     private String errorMessage;
+    private String recognitionText;
     private LocalDateTime createdAt;
 
     public Long getId() { return id; }
@@ -35,6 +36,8 @@ public class ImportFile {
     public void setStatus(String status) { this.status = status; }
     public String getErrorMessage() { return errorMessage; }
     public void setErrorMessage(String errorMessage) { this.errorMessage = errorMessage; }
+    public String getRecognitionText() { return recognitionText; }
+    public void setRecognitionText(String recognitionText) { this.recognitionText = recognitionText; }
     public LocalDateTime getCreatedAt() { return createdAt; }
     public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
 }

@@ -36,6 +36,10 @@ yarn-error.*
 # local uploaded import files
 /backend/uploads/
 
+# local OCR virtual environment, downloaded models, and cache
+/ocr-service/.venv/
+/ocr-service/cache/
+
 # typescript
 *.tsbuildinfo
 

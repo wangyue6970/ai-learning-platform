@@ -5,29 +5,45 @@ import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.wangyue.backend.dto.CreateQuestionOptionRequest;
 import com.wangyue.backend.dto.CreateQuestionRequest;
 import com.wangyue.backend.dto.RegisterRequest;
+import com.wangyue.backend.dto.ImportFileResponse;
+import com.wangyue.backend.dto.RecognizedQuestion;
+import com.wangyue.backend.dto.RecognizedQuestionOption;
 import com.wangyue.backend.dto.SubmitAnswerRequest;
 import com.wangyue.backend.dto.SubmitAnswerResponse;
 import com.wangyue.backend.entity.AnswerRecord;
 import com.wangyue.backend.entity.AppUser;
 import com.wangyue.backend.entity.LearningLibrary;
 import com.wangyue.backend.entity.ImportFile;
+import com.wangyue.backend.entity.ImportBatch;
 import com.wangyue.backend.entity.Question;
+import com.wangyue.backend.entity.QuestionDraft;
 import com.wangyue.backend.entity.WrongQuestion;
 import com.wangyue.backend.mapper.AnswerRecordMapper;
 import com.wangyue.backend.mapper.AppUserMapper;
 import com.wangyue.backend.mapper.LearningLibraryMapper;
 import com.wangyue.backend.mapper.ImportFileMapper;
+import com.wangyue.backend.mapper.ImportBatchMapper;
 import com.wangyue.backend.mapper.QuestionMapper;
+import com.wangyue.backend.mapper.QuestionDraftMapper;
 import com.wangyue.backend.mapper.WrongQuestionMapper;
 import com.wangyue.backend.service.LearningLibraryService;
 import com.wangyue.backend.service.AuthService;
 import com.wangyue.backend.service.QuestionService;
 import com.wangyue.backend.service.PracticeService;
+import com.wangyue.backend.service.QuestionDraftService;
+import com.wangyue.backend.service.OcrService;
+import com.wangyue.backend.service.ImportService;
+import java.awt.Color;
+import java.awt.Font;
+import java.awt.Graphics2D;
+import java.awt.image.BufferedImage;
+import javax.imageio.ImageIO;
 import java.util.List;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -43,6 +59,7 @@ import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.web.servlet.MvcResult;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -88,7 +105,126 @@ class BackendApplicationTests {
 	private ImportFileMapper importFileMapper;
 
 	@Autowired
+	private ImportBatchMapper importBatchMapper;
+
+	@Autowired
+	private QuestionDraftMapper questionDraftMapper;
+
+	@Autowired
+	private QuestionDraftService questionDraftService;
+
+	@Autowired
+	private ImportService importService;
+
+	@Autowired
+	private OcrService ocrService;
+
+	@Autowired
 	private MockMvc mockMvc;
+
+	@Test
+	void ocrServiceCanReadTextFromATemporaryImage() throws Exception {
+		Path imagePath = Files.createTempFile("ocr-service-test-", ".png");
+		try {
+			BufferedImage image = new BufferedImage(900, 260, BufferedImage.TYPE_INT_RGB);
+			Graphics2D graphics = image.createGraphics();
+			graphics.setColor(Color.WHITE);
+			graphics.fillRect(0, 0, image.getWidth(), image.getHeight());
+			graphics.setColor(Color.BLACK);
+			graphics.setFont(new Font("Arial", Font.BOLD, 72));
+			graphics.drawString("PADDLE OCR TEST", 40, 150);
+			graphics.dispose();
+			ImageIO.write(image, "png", imagePath.toFile());
+
+			String recognizedText = ocrService.recognizeImage(imagePath);
+			assertTrue(!recognizedText.isBlank());
+		} finally {
+			Files.deleteIfExists(imagePath);
+		}
+	}
+
+	@Test
+	void imageRecognitionChangesOnlyItsOwnFileStatus() throws Exception {
+		LearningLibrary library = learningLibraryService.create("ocr-flow-test-" + System.nanoTime());
+		Path imagePath = Files.createTempFile("ocr-import-test-", ".png");
+		ImportBatch batch = new ImportBatch();
+		batch.setLibraryId(library.getId());
+		batch.setStatus("WAITING_RECOGNITION");
+		importBatchMapper.insert(batch);
+
+		ImportFile successfulFile = new ImportFile();
+		successfulFile.setImportBatchId(batch.getId());
+		successfulFile.setOriginalFileName("ocr-success.png");
+		successfulFile.setStoredFilePath(imagePath.toString());
+		successfulFile.setFileType("image/png");
+		successfulFile.setFileSizeBytes(1L);
+		successfulFile.setStatus("WAITING_RECOGNITION");
+
+		ImportFile unrelatedFile = new ImportFile();
+		unrelatedFile.setImportBatchId(batch.getId());
+		unrelatedFile.setOriginalFileName("still-waiting.png");
+		unrelatedFile.setStoredFilePath(imagePath.toString());
+		unrelatedFile.setFileType("image/png");
+		unrelatedFile.setFileSizeBytes(1L);
+		unrelatedFile.setStatus("WAITING_RECOGNITION");
+
+		try {
+			BufferedImage image = new BufferedImage(900, 260, BufferedImage.TYPE_INT_RGB);
+			Graphics2D graphics = image.createGraphics();
+			graphics.setColor(Color.WHITE);
+			graphics.fillRect(0, 0, image.getWidth(), image.getHeight());
+			graphics.setColor(Color.BLACK);
+			graphics.setFont(new Font("Arial", Font.BOLD, 72));
+			graphics.drawString("PADDLE OCR TEST", 40, 150);
+			graphics.dispose();
+			ImageIO.write(image, "png", imagePath.toFile());
+			importFileMapper.insert(successfulFile);
+			importFileMapper.insert(unrelatedFile);
+
+			ImportFileResponse result = importService.recognizeFile(library.getId(), successfulFile.getId());
+			assertEquals("WAITING_STRUCTURING", result.getStatus());
+			assertTrue(!importFileMapper.selectById(successfulFile.getId()).getRecognitionText().isBlank());
+			assertEquals("WAITING_RECOGNITION", importFileMapper.selectById(unrelatedFile.getId()).getStatus());
+		} finally {
+			Files.deleteIfExists(imagePath);
+			importFileMapper.deleteById(successfulFile.getId());
+			importFileMapper.deleteById(unrelatedFile.getId());
+			importBatchMapper.deleteById(batch.getId());
+			learningLibraryMapper.deleteById(library.getId());
+		}
+	}
+
+	@Test
+	void recognitionApiRejectsAFileFromAnotherLibrary() throws Exception {
+		LearningLibrary ownerLibrary = learningLibraryService.create("recognize-owner-" + System.nanoTime());
+		LearningLibrary otherLibrary = learningLibraryService.create("recognize-other-" + System.nanoTime());
+		String imageFileName = "recognize-source-" + System.nanoTime() + ".png";
+		try {
+			mockMvc.perform(multipart("/api/libraries/" + ownerLibrary.getId() + "/import-batches")
+				.file(new MockMultipartFile("files", imageFileName, "image/png", "test image".getBytes())))
+				.andExpect(status().isCreated());
+
+			Long importFileId = jdbcTemplate.queryForObject(
+				"SELECT id FROM import_file WHERE original_file_name = ?", Long.class, imageFileName
+			);
+
+			mockMvc.perform(post("/api/libraries/" + otherLibrary.getId()
+				+ "/import-batches/files/" + importFileId + "/recognize"))
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.message").value("导入文件不属于当前学习库"));
+		} finally {
+			List<ImportFile> importedFiles = importFileMapper.selectList(
+				new LambdaQueryWrapper<ImportFile>().eq(ImportFile::getOriginalFileName, imageFileName)
+			);
+			for (ImportFile importFile : importedFiles) {
+				if (importFile.getStoredFilePath() != null) {
+					Files.deleteIfExists(Path.of(importFile.getStoredFilePath()));
+				}
+			}
+			learningLibraryMapper.deleteById(ownerLibrary.getId());
+			learningLibraryMapper.deleteById(otherLibrary.getId());
+		}
+	}
 
 	@Test
 	void passwordIsHashedAndCanBeVerified() {
@@ -208,6 +344,131 @@ class BackendApplicationTests {
 				.andExpect(jsonPath("$.status").value("UPLOAD_FAILED"))
 				.andExpect(jsonPath("$.files[0].status").value("UPLOAD_FAILED"));
 		} finally {
+			learningLibraryMapper.deleteById(library.getId());
+		}
+	}
+
+	@Test
+	void wordImportApiAcceptsTheLongDocxMimeType() throws Exception {
+		LearningLibrary library = learningLibraryService.create("word-import-api-test-" + System.nanoTime());
+		String wordFileName = "questions-" + System.nanoTime() + ".docx";
+		try {
+			MockMultipartFile wordFile = new MockMultipartFile(
+				"files",
+				wordFileName,
+				"application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+				"test word document".getBytes()
+			);
+
+			mockMvc.perform(multipart("/api/libraries/" + library.getId() + "/import-batches")
+				.file(wordFile))
+				.andExpect(status().isCreated())
+				.andExpect(jsonPath("$.status").value("WAITING_RECOGNITION"))
+				.andExpect(jsonPath("$.files[0].status").value("WAITING_RECOGNITION"));
+		} finally {
+			List<ImportFile> importedFiles = importFileMapper.selectList(
+				new LambdaQueryWrapper<ImportFile>()
+					.eq(ImportFile::getOriginalFileName, wordFileName)
+			);
+			for (ImportFile importFile : importedFiles) {
+				if (importFile.getStoredFilePath() != null) {
+					Files.deleteIfExists(Path.of(importFile.getStoredFilePath()));
+				}
+			}
+			learningLibraryMapper.deleteById(library.getId());
+		}
+	}
+
+	@Test
+	void importFileDraftsCanBeReadOnlyFromItsOwnLibrary() throws Exception {
+		LearningLibrary ownerLibrary = learningLibraryService.create("draft-owner-" + System.nanoTime());
+		LearningLibrary otherLibrary = learningLibraryService.create("draft-other-" + System.nanoTime());
+		String imageFileName = "draft-source-" + System.nanoTime() + ".png";
+		try {
+			MvcResult uploadResult = mockMvc.perform(
+				multipart("/api/libraries/" + ownerLibrary.getId() + "/import-batches")
+					.file(new MockMultipartFile("files", imageFileName, "image/png", "test image".getBytes()))
+			).andExpect(status().isCreated()).andReturn();
+
+			String responseBody = uploadResult.getResponse().getContentAsString();
+			Long importFileId = jdbcTemplate.queryForObject(
+				"SELECT id FROM import_file WHERE original_file_name = ?", Long.class, imageFileName
+			);
+
+			assertNotNull(responseBody);
+			mockMvc.perform(get("/api/libraries/" + ownerLibrary.getId()
+				+ "/import-batches/files/" + importFileId + "/drafts"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$").isEmpty());
+
+			mockMvc.perform(get("/api/libraries/" + otherLibrary.getId()
+				+ "/import-batches/files/" + importFileId + "/drafts"))
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.message").value("导入文件不属于当前学习库"));
+		} finally {
+			List<ImportFile> importedFiles = importFileMapper.selectList(
+				new LambdaQueryWrapper<ImportFile>()
+					.eq(ImportFile::getOriginalFileName, imageFileName)
+			);
+			for (ImportFile importFile : importedFiles) {
+				if (importFile.getStoredFilePath() != null) {
+					Files.deleteIfExists(Path.of(importFile.getStoredFilePath()));
+				}
+			}
+			learningLibraryMapper.deleteById(ownerLibrary.getId());
+			learningLibraryMapper.deleteById(otherLibrary.getId());
+		}
+	}
+
+	@Test
+	void validRecognitionResultCreatesDraftsButNeverCreatesFormalQuestions() throws Exception {
+		LearningLibrary library = learningLibraryService.create("recognition-draft-" + System.nanoTime());
+		String imageFileName = "recognition-source-" + System.nanoTime() + ".png";
+		try {
+			mockMvc.perform(multipart("/api/libraries/" + library.getId() + "/import-batches")
+				.file(new MockMultipartFile("files", imageFileName, "image/png", "test image".getBytes())))
+				.andExpect(status().isCreated());
+
+			Long importFileId = jdbcTemplate.queryForObject(
+				"SELECT id FROM import_file WHERE original_file_name = ?", Long.class, imageFileName
+			);
+			RecognizedQuestionOption optionA = new RecognizedQuestionOption();
+			optionA.setOptionKey("A");
+			optionA.setContent("管理文件");
+			RecognizedQuestionOption optionB = new RecognizedQuestionOption();
+			optionB.setOptionKey("B");
+			optionB.setContent("分配 CPU");
+			RecognizedQuestion recognizedQuestion = new RecognizedQuestion();
+			recognizedQuestion.setQuestionType("SINGLE_CHOICE");
+			recognizedQuestion.setStem("进程调度的作用是？");
+			recognizedQuestion.setOptions(List.of(optionA, optionB));
+			recognizedQuestion.setCorrectAnswer(List.of("B"));
+
+			Long formalQuestionCountBefore = questionMapper.selectCount(
+				new LambdaQueryWrapper<Question>().eq(Question::getLibraryId, library.getId())
+			);
+			questionDraftService.saveRecognitionResult(
+				importFileId, "1. 进程调度的作用是？", List.of(recognizedQuestion)
+			);
+
+			QuestionDraft draft = questionDraftMapper.selectOne(new LambdaQueryWrapper<QuestionDraft>()
+				.eq(QuestionDraft::getImportFileId, importFileId));
+			assertNotNull(draft);
+			assertEquals(library.getId(), draft.getLibraryId());
+			assertEquals("WAITING_CONFIRMATION", draft.getStatus());
+			assertEquals(formalQuestionCountBefore, questionMapper.selectCount(
+				new LambdaQueryWrapper<Question>().eq(Question::getLibraryId, library.getId())
+			));
+			assertEquals("WAITING_CONFIRMATION", importFileMapper.selectById(importFileId).getStatus());
+		} finally {
+			List<ImportFile> importedFiles = importFileMapper.selectList(
+				new LambdaQueryWrapper<ImportFile>().eq(ImportFile::getOriginalFileName, imageFileName)
+			);
+			for (ImportFile importFile : importedFiles) {
+				if (importFile.getStoredFilePath() != null) {
+					Files.deleteIfExists(Path.of(importFile.getStoredFilePath()));
+				}
+			}
 			learningLibraryMapper.deleteById(library.getId());
 		}
 	}

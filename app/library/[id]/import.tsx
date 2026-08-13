@@ -1,55 +1,152 @@
-import { router, useLocalSearchParams } from 'expo-router';
+import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
+import { router, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useLibraries } from '../../../contexts/LibraryContext';
-import { ImportFileResult, uploadImportFiles } from '../../../services/importApi';
+import { ImportFileResult, recognizeImportFile, uploadImportFiles } from '../../../services/importApi';
 
-const importOptions = [
-  { title: '拍照导入', description: '使用手机相机拍摄题目图片' },
-  { title: '从相册选择', description: '一次选择多张题目图片' },
-  { title: '选择 Word', description: '选择包含题目的 Word 文件' },
-];
+type PendingImportFile = {
+  uri: string;
+  displayName: string;
+  kind: 'image' | 'word';
+};
+
+function getImportStatusText(file: ImportFileResult, kind?: PendingImportFile['kind']) {
+  switch (file.status) {
+    case 'WAITING_RECOGNITION':
+      return kind === 'word' ? '已上传，等待 Word 解析' : '已上传，等待识别';
+    case 'RECOGNIZING':
+      return '正在识别图片';
+    case 'WAITING_STRUCTURING':
+      return '已识别，等待生成题目';
+    case 'RECOGNITION_FAILED':
+      return `识别失败：${file.errorMessage || '请稍后重试'}`;
+    case 'UPLOAD_FAILED':
+      return `上传失败：${file.errorMessage || '请稍后重试'}`;
+  }
+}
 
 export default function ImportQuestionsScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { libraries } = useLibraries();
   const library = libraries.find((item) => item.id === id);
-  const [selectedImages, setSelectedImages] = useState<ImagePicker.ImagePickerAsset[]>([]);
+  const [selectedFiles, setSelectedFiles] = useState<PendingImportFile[]>([]);
   const [uploading, setUploading] = useState(false);
   const [uploadResults, setUploadResults] = useState<ImportFileResult[]>([]);
+  const [fileKinds, setFileKinds] = useState<Record<number, PendingImportFile['kind']>>({});
+
+  function addSelectedFiles(files: PendingImportFile[]) {
+    setSelectedFiles((currentFiles) => {
+      const existingUris = new Set(currentFiles.map((file) => file.uri));
+      return [...currentFiles, ...files.filter((file) => !existingUris.has(file.uri))];
+    });
+  }
 
   async function captureImage() {
     const permission = await ImagePicker.requestCameraPermissionsAsync();
-
     if (!permission.granted) {
       Alert.alert('需要相机权限', '请允许相机权限后再拍照导入。');
       return;
     }
 
     const result = await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: 0.8 });
-
     if (result.canceled || !result.assets[0]) {
       return;
     }
 
-    setSelectedImages((currentImages) => [...currentImages, result.assets[0]]);
+    const image = result.assets[0];
+    addSelectedFiles([{ uri: image.uri, displayName: image.fileName || '拍摄的题目图片', kind: 'image' }]);
   }
 
-  async function uploadSelectedImages() {
-    if (selectedImages.length === 0 || uploading) {
+  async function selectImagesFromLibrary() {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      Alert.alert('需要相册权限', '请允许访问相册后再选择题目图片。');
       return;
     }
 
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsMultipleSelection: true,
+      selectionLimit: 0,
+      quality: 0.8,
+    });
+    if (result.canceled || result.assets.length === 0) {
+      return;
+    }
+
+    addSelectedFiles(result.assets.map((image) => ({
+      uri: image.uri,
+      displayName: image.fileName || '相册题目图片',
+      kind: 'image' as const,
+    })));
+  }
+
+  async function selectWordDocument() {
+    const result = await DocumentPicker.getDocumentAsync({
+      type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      copyToCacheDirectory: true,
+      multiple: false,
+    });
+    if (result.canceled || !result.assets[0]) {
+      return;
+    }
+
+    const wordFile = result.assets[0];
+    if (!wordFile.name.toLowerCase().endsWith('.docx')) {
+      Alert.alert('暂不支持该文件', '请选择 .docx 格式的 Word 文件。');
+      return;
+    }
+
+    addSelectedFiles([{ uri: wordFile.uri, displayName: wordFile.name, kind: 'word' }]);
+  }
+
+  async function uploadSelectedFiles() {
+    if (selectedFiles.length === 0 || uploading) {
+      return;
+    }
+
+    // Keep this upload's file list stable while React state is being updated.
+    const filesForThisUpload = selectedFiles;
     setUploading(true);
     setUploadResults([]);
 
     try {
-      const result = await uploadImportFiles(id, selectedImages);
+      const result = await uploadImportFiles(id, filesForThisUpload);
+      const uploadedKinds = Object.fromEntries(
+        result.files.map((file, index) => [file.id, filesForThisUpload[index]?.kind || 'image'])
+      ) as Record<number, PendingImportFile['kind']>;
+      setFileKinds(uploadedKinds);
       setUploadResults(result.files);
-      setSelectedImages((currentImages) =>
-        currentImages.filter((_, index) => result.files[index]?.status !== 'WAITING_RECOGNITION')
+      setSelectedFiles((currentFiles) =>
+        currentFiles.filter((_, index) => result.files[index]?.status === 'UPLOAD_FAILED')
       );
+
+      for (const [index, uploadedFile] of result.files.entries()) {
+        if (filesForThisUpload[index]?.kind !== 'image' || uploadedFile.status !== 'WAITING_RECOGNITION') {
+          continue;
+        }
+
+        try {
+          setUploadResults((currentFiles) => currentFiles.map((file) =>
+            file.id === uploadedFile.id
+              ? { ...file, status: 'RECOGNIZING' as const, errorMessage: null }
+              : file
+          ));
+          const recognizedFile = await recognizeImportFile(id, uploadedFile.id);
+          setUploadResults((currentFiles) => currentFiles.map((file) =>
+            file.id === recognizedFile.id ? recognizedFile : file
+          ));
+        } catch (error) {
+          const message = error instanceof Error ? error.message : '图片识别失败，请稍后重试';
+          setUploadResults((currentFiles) => currentFiles.map((file) =>
+            file.id === uploadedFile.id
+              ? { ...file, status: 'RECOGNITION_FAILED', errorMessage: message }
+              : file
+          ));
+        }
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : '文件上传失败，请稍后重试';
       Alert.alert('上传失败', message);
@@ -69,42 +166,44 @@ export default function ImportQuestionsScreen() {
       </Pressable>
       <Text style={styles.title}>导入题目</Text>
       <Text style={styles.libraryText}>保存到：{library.name}</Text>
+
       <Text style={styles.sectionTitle}>选择导入方式</Text>
       <Pressable style={styles.optionCard} onPress={captureImage}>
         <Text style={styles.optionTitle}>拍照导入</Text>
         <Text style={styles.optionDescription}>使用手机相机拍摄题目图片</Text>
       </Pressable>
-      {importOptions.slice(1).map((option) => (
-        <View key={option.title} style={styles.optionCard}>
-          <Text style={styles.optionTitle}>{option.title}</Text>
-          <Text style={styles.optionDescription}>{option.description}</Text>
-        </View>
-      ))}
-      {selectedImages.length > 0 && (
+      <Pressable style={styles.optionCard} onPress={selectImagesFromLibrary}>
+        <Text style={styles.optionTitle}>从相册选择</Text>
+        <Text style={styles.optionDescription}>一次选择多张题目图片</Text>
+      </Pressable>
+      <Pressable style={styles.optionCard} onPress={selectWordDocument}>
+        <Text style={styles.optionTitle}>选择 Word</Text>
+        <Text style={styles.optionDescription}>选择包含题目的 Word 文件</Text>
+      </Pressable>
+
+      {selectedFiles.length > 0 && (
         <View>
-          <Text style={styles.sectionTitle}>待上传文件（{selectedImages.length}）</Text>
-          {selectedImages.map((image) => (
-            <Text key={image.uri} style={styles.fileName}>
-              {image.fileName || '拍摄的题目图片'}
-            </Text>
+          <Text style={styles.sectionTitle}>待上传文件（{selectedFiles.length}）</Text>
+          {selectedFiles.map((file) => (
+            <Text key={file.uri} style={styles.fileName}>{file.displayName}</Text>
           ))}
           <Pressable
             style={[styles.uploadButton, uploading && styles.uploadButtonDisabled]}
-            onPress={uploadSelectedImages}
+            onPress={uploadSelectedFiles}
           >
             <Text style={styles.uploadButtonText}>
-              {uploading ? '正在上传…' : `上传 ${selectedImages.length} 个文件`}
+              {uploading ? '正在上传和识别…' : `上传 ${selectedFiles.length} 个文件`}
             </Text>
           </Pressable>
         </View>
       )}
+
       {uploadResults.length > 0 && (
         <View>
-          <Text style={styles.sectionTitle}>上传结果</Text>
+          <Text style={styles.sectionTitle}>导入结果</Text>
           {uploadResults.map((file) => (
             <Text key={file.id} style={styles.fileName}>
-              {file.originalFileName}：
-              {file.status === 'WAITING_RECOGNITION' ? '已上传，等待识别' : `上传失败：${file.errorMessage}`}
+              {file.originalFileName}：{getImportStatusText(file, fileKinds[file.id])}
             </Text>
           ))}
         </View>

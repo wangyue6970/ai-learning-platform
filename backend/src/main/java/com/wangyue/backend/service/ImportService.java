@@ -3,13 +3,23 @@ package com.wangyue.backend.service;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.wangyue.backend.dto.ImportBatchResponse;
 import com.wangyue.backend.dto.ImportFileResponse;
+import com.wangyue.backend.dto.QuestionDraftOptionResponse;
+import com.wangyue.backend.dto.QuestionDraftResponse;
 import com.wangyue.backend.entity.ImportBatch;
 import com.wangyue.backend.entity.ImportFile;
+import com.wangyue.backend.entity.QuestionDraft;
+import com.wangyue.backend.entity.QuestionDraftOption;
 import com.wangyue.backend.mapper.ImportBatchMapper;
 import com.wangyue.backend.mapper.ImportFileMapper;
+import com.wangyue.backend.mapper.QuestionDraftMapper;
+import com.wangyue.backend.mapper.QuestionDraftOptionMapper;
+import java.nio.file.Path;
 import java.util.List;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
+import tools.jackson.core.JacksonException;
+import tools.jackson.core.type.TypeReference;
+import tools.jackson.databind.ObjectMapper;
 
 @Service
 public class ImportService {
@@ -18,17 +28,29 @@ public class ImportService {
     private final ImportBatchMapper importBatchMapper;
     private final ImportFileMapper importFileMapper;
     private final ImportStorageService importStorageService;
+    private final OcrService ocrService;
+    private final QuestionDraftMapper questionDraftMapper;
+    private final QuestionDraftOptionMapper questionDraftOptionMapper;
+    private final ObjectMapper objectMapper;
 
     public ImportService(
         LearningLibraryService learningLibraryService,
         ImportBatchMapper importBatchMapper,
         ImportFileMapper importFileMapper,
-        ImportStorageService importStorageService
+        ImportStorageService importStorageService,
+        OcrService ocrService,
+        QuestionDraftMapper questionDraftMapper,
+        QuestionDraftOptionMapper questionDraftOptionMapper,
+        ObjectMapper objectMapper
     ) {
         this.learningLibraryService = learningLibraryService;
         this.importBatchMapper = importBatchMapper;
         this.importFileMapper = importFileMapper;
         this.importStorageService = importStorageService;
+        this.ocrService = ocrService;
+        this.questionDraftMapper = questionDraftMapper;
+        this.questionDraftOptionMapper = questionDraftOptionMapper;
+        this.objectMapper = objectMapper;
     }
 
     public ImportBatchResponse createBatch(Long libraryId, List<MultipartFile> files) {
@@ -98,5 +120,100 @@ public class ImportService {
         response.setStatus(batch.getStatus());
         response.setFiles(files);
         return response;
+    }
+
+    public List<QuestionDraftResponse> findDrafts(Long libraryId, Long importFileId) {
+        findOwnedImportFile(libraryId, importFileId);
+
+        return questionDraftMapper.selectList(new LambdaQueryWrapper<QuestionDraft>()
+            .eq(QuestionDraft::getImportFileId, importFileId)
+            .orderByAsc(QuestionDraft::getSortOrder)
+            .orderByAsc(QuestionDraft::getId)
+        ).stream().map(this::toDraftResponse).toList();
+    }
+
+    public ImportFileResponse recognizeFile(Long libraryId, Long importFileId) {
+        ImportFile importFile = findOwnedImportFile(libraryId, importFileId);
+        if (!"WAITING_RECOGNITION".equals(importFile.getStatus())) {
+            throw new IllegalStateException("当前文件不处于等待识别状态");
+        }
+        if (importFile.getFileType() == null || !importFile.getFileType().startsWith("image/")) {
+            throw new IllegalArgumentException("当前文件不是图片，不能使用图片识别");
+        }
+
+        importFile.setStatus("RECOGNIZING");
+        importFile.setErrorMessage(null);
+        importFileMapper.updateById(importFile);
+
+        try {
+            String recognitionText = ocrService.recognizeImage(Path.of(importFile.getStoredFilePath()));
+            importFile.setRecognitionText(recognitionText);
+            importFile.setStatus("WAITING_STRUCTURING");
+            importFileMapper.updateById(importFile);
+        } catch (RuntimeException exception) {
+            importFile.setStatus("RECOGNITION_FAILED");
+            importFile.setErrorMessage(exception.getMessage());
+            importFileMapper.updateById(importFile);
+        }
+
+        return toFileResponse(importFile);
+    }
+
+    private ImportFile findOwnedImportFile(Long libraryId, Long importFileId) {
+        ImportFile importFile = importFileMapper.selectById(importFileId);
+        if (importFile == null) {
+            throw new IllegalArgumentException("导入文件不存在");
+        }
+
+        ImportBatch batch = importBatchMapper.selectById(importFile.getImportBatchId());
+        if (batch == null || !libraryId.equals(batch.getLibraryId())) {
+            throw new IllegalArgumentException("导入文件不属于当前学习库");
+        }
+        return importFile;
+    }
+
+    private QuestionDraftResponse toDraftResponse(QuestionDraft draft) {
+        QuestionDraftResponse response = new QuestionDraftResponse();
+        response.setId(draft.getId());
+        response.setImportFileId(draft.getImportFileId());
+        response.setSortOrder(draft.getSortOrder());
+        response.setStatus(draft.getStatus());
+        response.setQuestionType(draft.getQuestionType());
+        response.setStem(draft.getStem());
+        response.setCorrectAnswer(readStringList(draft.getCorrectAnswer()));
+        response.setExplanation(draft.getExplanation());
+        response.setKnowledgePoints(readStringList(draft.getKnowledgePoints()));
+        response.setOptions(questionDraftOptionMapper.selectList(
+            new LambdaQueryWrapper<QuestionDraftOption>()
+                .eq(QuestionDraftOption::getQuestionDraftId, draft.getId())
+                .orderByAsc(QuestionDraftOption::getSortOrder)
+        ).stream().map(option -> {
+            QuestionDraftOptionResponse optionResponse = new QuestionDraftOptionResponse();
+            optionResponse.setOptionKey(option.getOptionKey());
+            optionResponse.setContent(option.getContent());
+            optionResponse.setSortOrder(option.getSortOrder());
+            return optionResponse;
+        }).toList());
+        return response;
+    }
+
+    private ImportFileResponse toFileResponse(ImportFile importFile) {
+        ImportFileResponse response = new ImportFileResponse();
+        response.setId(importFile.getId());
+        response.setOriginalFileName(importFile.getOriginalFileName());
+        response.setStatus(importFile.getStatus());
+        response.setErrorMessage(importFile.getErrorMessage());
+        return response;
+    }
+
+    private List<String> readStringList(String jsonText) {
+        if (jsonText == null || jsonText.isBlank()) {
+            return List.of();
+        }
+        try {
+            return objectMapper.readValue(jsonText, new TypeReference<List<String>>() {});
+        } catch (JacksonException exception) {
+            throw new IllegalStateException("识别草稿的数据格式错误", exception);
+        }
     }
 }
