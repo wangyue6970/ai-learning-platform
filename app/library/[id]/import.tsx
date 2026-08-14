@@ -47,6 +47,8 @@ export default function ImportQuestionsScreen() {
   const [uploadResults, setUploadResults] = useState<ImportFileResult[]>([]);
   const [fileKinds, setFileKinds] = useState<Record<number, PendingImportFile['kind']>>({});
   const [recognitionProgress, setRecognitionProgress] = useState<{ completed: number; total: number } | null>(null);
+  const [isBatchStructuring, setIsBatchStructuring] = useState(false);
+  const [structuringProgress, setStructuringProgress] = useState<{ completed: number; total: number } | null>(null);
 
   function addSelectedFiles(files: PendingImportFile[]) {
     setSelectedFiles((currentFiles) => {
@@ -167,6 +169,7 @@ export default function ImportQuestionsScreen() {
     setUploading(true);
     setUploadResults([]);
     setRecognitionProgress(null);
+    setStructuringProgress(null);
 
     try {
       const result = await uploadImportFiles(id, filesForThisUpload);
@@ -207,6 +210,32 @@ export default function ImportQuestionsScreen() {
           ? { ...file, status: 'STRUCTURING_FAILED', errorMessage: message }
           : file
       ));
+    }
+  }
+
+  async function structureAllWaitingFiles() {
+    if (isBatchStructuring) {
+      return;
+    }
+
+    const filesToStructure = uploadResults.filter((file) => file.status === 'WAITING_STRUCTURING');
+    if (filesToStructure.length === 0) {
+      return;
+    }
+
+    setIsBatchStructuring(true);
+    setStructuringProgress({ completed: 0, total: filesToStructure.length });
+
+    try {
+      for (const file of filesToStructure) {
+        await structureUploadedFile(file);
+        setStructuringProgress((currentProgress) => currentProgress && {
+          ...currentProgress,
+          completed: currentProgress.completed + 1,
+        });
+      }
+    } finally {
+      setIsBatchStructuring(false);
     }
   }
 
@@ -261,19 +290,23 @@ export default function ImportQuestionsScreen() {
               识别进度：{recognitionProgress.completed} / {recognitionProgress.total}
             </Text>
           )}
+          {(isBatchStructuring || uploadResults.some((file) => file.status === 'WAITING_STRUCTURING')) && (
+            <Pressable
+              disabled={isBatchStructuring}
+              style={[styles.batchStructureButton, isBatchStructuring && styles.uploadButtonDisabled]}
+              onPress={() => void structureAllWaitingFiles()}>
+              <Text style={styles.batchStructureButtonText}>
+                {isBatchStructuring
+                  ? `正在生成题目草稿：${structuringProgress?.completed || 0} / ${structuringProgress?.total || 0}`
+                  : `批量生成 ${uploadResults.filter((file) => file.status === 'WAITING_STRUCTURING').length} 个文件的题目草稿`}
+              </Text>
+            </Pressable>
+          )}
           {uploadResults.map((file) => (
             <View key={file.id} style={styles.resultCard}>
               <Text style={styles.fileName}>
                 {file.originalFileName}：{getImportStatusText(file, fileKinds[file.id])}
               </Text>
-              {file.status === 'WAITING_STRUCTURING' && (
-                <Pressable
-                  style={styles.structureButton}
-                  onPress={() => structureUploadedFile(file)}
-                >
-                  <Text style={styles.structureButtonText}>生成题目草稿</Text>
-                </Pressable>
-              )}
               {file.status === 'WAITING_CONFIRMATION' && (
                 <Pressable
                   style={styles.structureButton}
@@ -309,6 +342,8 @@ const styles = StyleSheet.create({
   uploadButton: { alignItems: 'center', backgroundColor: '#2563EB', borderRadius: 10, marginTop: 16, paddingVertical: 14 },
   uploadButtonDisabled: { backgroundColor: '#93C5FD' },
   uploadButtonText: { color: '#FFFFFF', fontSize: 15, fontWeight: '700' },
+  batchStructureButton: { alignItems: 'center', backgroundColor: '#2563EB', borderRadius: 10, marginTop: 14, paddingVertical: 13 },
+  batchStructureButtonText: { color: '#FFFFFF', fontSize: 15, fontWeight: '700' },
   progressText: { color: '#64748B', fontSize: 14, marginTop: 10 },
   emptyText: { flex: 1, padding: 20, paddingTop: 64 },
 });
