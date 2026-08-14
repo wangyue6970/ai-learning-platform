@@ -11,6 +11,7 @@ export type ImportFileResult = {
     | 'WAITING_STRUCTURING'
     | 'STRUCTURING'
     | 'WAITING_CONFIRMATION'
+    | 'CONFIRMED'
     | 'RECOGNITION_FAILED'
     | 'STRUCTURING_FAILED'
     | 'UPLOAD_FAILED';

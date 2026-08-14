@@ -35,17 +35,6 @@ export default function BatchQuestionDraftsScreen() {
     }, [loadDrafts])
   );
 
-  function askToConfirmDraft(draft: QuestionDraft) {
-    Alert.alert(
-      '确认正式入库',
-      '确认后，这道题会进入学习库并可用于刷题。确认吗？',
-      [
-        { text: '取消', style: 'cancel' },
-        { text: '确认入库', onPress: () => void confirmDraft(draft) },
-      ]
-    );
-  }
-
   async function confirmDraft(draft: QuestionDraft) {
     setConfirmingDraftId(draft.id);
 
@@ -107,7 +96,7 @@ export default function BatchQuestionDraftsScreen() {
               <Pressable
                 disabled={confirmingDraftId === draft.id}
                 style={[styles.confirmButton, confirmingDraftId === draft.id && styles.confirmButtonDisabled]}
-                onPress={() => askToConfirmDraft(draft)}>
+                onPress={() => void confirmDraft(draft)}>
                 <Text style={styles.confirmButtonText}>
                   {confirmingDraftId === draft.id ? '正在入库…' : '确认入库'}
                 </Text>

@@ -54,6 +54,24 @@ public class ImportStorageService {
         }
     }
 
+    /** Deletes only a file that was stored in this service's private directory. */
+    public void deleteStoredFile(String storedFilePath) {
+        if (storedFilePath == null || storedFilePath.isBlank()) {
+            return;
+        }
+
+        Path targetPath = Paths.get(storedFilePath).toAbsolutePath().normalize();
+        if (!targetPath.startsWith(storageDirectory)) {
+            throw new IllegalArgumentException("非法临时文件路径");
+        }
+
+        try {
+            Files.deleteIfExists(targetPath);
+        } catch (IOException exception) {
+            throw new IllegalStateException("临时原文件删除失败", exception);
+        }
+    }
+
     private String getExtension(String fileName) {
         if (fileName == null) {
             return "";

@@ -212,14 +212,41 @@ public class ImportService {
     }
 
     public QuestionDraftResponse confirmDraft(Long libraryId, Long importFileId, Long draftId) {
-        findOwnedImportFile(libraryId, importFileId);
+        ImportFile importFile = findOwnedImportFile(libraryId, importFileId);
         questionDraftService.confirmDraft(libraryId, importFileId, draftId);
+        cleanUpSourceFileWhenAllDraftsConfirmed(importFile);
 
         QuestionDraft draft = questionDraftMapper.selectById(draftId);
         if (draft == null) {
             throw new IllegalArgumentException("题目草稿不存在");
         }
         return toDraftResponse(draft);
+    }
+
+    /**
+     * One source image can produce several drafts. It must remain available
+     * until the last draft from that image has been confirmed, then the
+     * temporary source file is removed for privacy.
+     */
+    private void cleanUpSourceFileWhenAllDraftsConfirmed(ImportFile importFile) {
+        boolean hasUnconfirmedDraft = questionDraftMapper.selectCount(new LambdaQueryWrapper<QuestionDraft>()
+            .eq(QuestionDraft::getImportFileId, importFile.getId())
+            .ne(QuestionDraft::getStatus, "CONFIRMED")) > 0;
+        if (hasUnconfirmedDraft) {
+            return;
+        }
+
+        importFile.setStatus("CONFIRMED");
+        try {
+            importStorageService.deleteStoredFile(importFile.getStoredFilePath());
+            importFile.setStoredFilePath(null);
+            importFile.setErrorMessage(null);
+        } catch (RuntimeException exception) {
+            // The formal question has already been saved. Do not falsely tell
+            // the user that confirmation failed just because cleanup failed.
+            importFile.setErrorMessage("题目已入库，但临时原文件清理失败");
+        }
+        importFileMapper.updateById(importFile);
     }
 
     public ImportFileResponse recognizeFile(Long libraryId, Long importFileId) {
