@@ -229,6 +229,16 @@ export default function ImportQuestionsScreen() {
       {latestBatch && (
         <View>
           <Text style={styles.progressText}>{getBatchSummary(latestBatch.files)}</Text>
+          {latestBatch.files.some((file) => file.status === 'WAITING_CONFIRMATION') && (
+            <Pressable
+              style={styles.batchDraftButton}
+              onPress={() => router.push({
+                pathname: '/library/[id]/drafts',
+                params: { id, importBatchId: String(latestBatch.id) },
+              })}>
+              <Text style={styles.batchDraftButtonText}>集中查看本批次草稿</Text>
+            </Pressable>
+          )}
           {latestBatch.files.map((file) => (
             <View key={file.id} style={styles.resultCard}>
               <Text style={styles.fileName}>{file.originalFileName}：{getImportStatusText(file)}</Text>
@@ -264,6 +274,8 @@ const styles = StyleSheet.create({
   resultCard: { backgroundColor: '#FFFFFF', borderRadius: 8, marginTop: 8, padding: 12 },
   structureButton: { alignItems: 'center', borderColor: '#2563EB', borderRadius: 8, borderWidth: 1, marginTop: 10, paddingVertical: 10 },
   structureButtonText: { color: '#2563EB', fontSize: 14, fontWeight: '700' },
+  batchDraftButton: { alignItems: 'center', backgroundColor: '#2563EB', borderRadius: 8, marginTop: 12, paddingVertical: 12 },
+  batchDraftButtonText: { color: '#FFFFFF', fontSize: 14, fontWeight: '700' },
   uploadButton: { alignItems: 'center', backgroundColor: '#2563EB', borderRadius: 10, marginTop: 16, paddingVertical: 14 },
   uploadButtonDisabled: { backgroundColor: '#93C5FD' },
   uploadButtonText: { color: '#FFFFFF', fontSize: 15, fontWeight: '700' },

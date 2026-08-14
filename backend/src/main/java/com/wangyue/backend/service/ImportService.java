@@ -15,8 +15,11 @@ import com.wangyue.backend.mapper.ImportFileMapper;
 import com.wangyue.backend.mapper.QuestionDraftMapper;
 import com.wangyue.backend.mapper.QuestionDraftOptionMapper;
 import java.nio.file.Path;
+import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 import tools.jackson.core.JacksonException;
@@ -160,6 +163,36 @@ public class ImportService {
             .orderByAsc(QuestionDraft::getSortOrder)
             .orderByAsc(QuestionDraft::getId)
         ).stream().map(this::toDraftResponse).toList();
+    }
+
+    /**
+     * Reads a whole import batch for review. This deliberately returns drafts
+     * only: a separate explicit confirmation is still required for every
+     * formal question.
+     */
+    public List<QuestionDraftResponse> findBatchDrafts(Long libraryId, Long importBatchId) {
+        findOwnedImportBatch(libraryId, importBatchId);
+
+        List<ImportFile> files = importFileMapper.selectList(new LambdaQueryWrapper<ImportFile>()
+            .eq(ImportFile::getImportBatchId, importBatchId)
+            .orderByAsc(ImportFile::getId));
+        if (files.isEmpty()) {
+            return List.of();
+        }
+
+        List<Long> importFileIds = files.stream().map(ImportFile::getId).toList();
+        Map<Long, Integer> fileOrder = new HashMap<>();
+        for (int index = 0; index < importFileIds.size(); index++) {
+            fileOrder.put(importFileIds.get(index), index);
+        }
+
+        return questionDraftMapper.selectList(new LambdaQueryWrapper<QuestionDraft>()
+            .in(QuestionDraft::getImportFileId, importFileIds)
+        ).stream().sorted(Comparator
+            .comparingInt((QuestionDraft draft) -> fileOrder.get(draft.getImportFileId()))
+            .thenComparing(QuestionDraft::getSortOrder)
+            .thenComparing(QuestionDraft::getId)
+        ).map(this::toDraftResponse).toList();
     }
 
     public QuestionDraftResponse updateDraft(
@@ -332,6 +365,14 @@ public class ImportService {
             throw new IllegalArgumentException("导入文件不属于当前学习库");
         }
         return importFile;
+    }
+
+    private ImportBatch findOwnedImportBatch(Long libraryId, Long importBatchId) {
+        ImportBatch batch = importBatchMapper.selectById(importBatchId);
+        if (batch == null || !libraryId.equals(batch.getLibraryId())) {
+            throw new IllegalArgumentException("导入批次不属于当前学习库");
+        }
+        return batch;
     }
 
     private QuestionDraftResponse toDraftResponse(QuestionDraft draft) {

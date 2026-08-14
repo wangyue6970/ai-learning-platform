@@ -48,6 +48,18 @@ public class ImportController {
         return importService.findLatestBatch(libraryId);
     }
 
+    /**
+     * Returns every draft in one batch. The client uses this for the batch
+     * review screen; it does not confirm or create any formal questions.
+     */
+    @GetMapping("/{importBatchId}/drafts")
+    public List<QuestionDraftResponse> findBatchDrafts(
+        @PathVariable Long libraryId,
+        @PathVariable Long importBatchId
+    ) {
+        return importService.findBatchDrafts(libraryId, importBatchId);
+    }
+
     @GetMapping("/files/{importFileId}/drafts")
     public List<QuestionDraftResponse> findDrafts(
         @PathVariable Long libraryId,

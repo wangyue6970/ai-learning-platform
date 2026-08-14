@@ -118,6 +118,34 @@ export async function fetchLatestImportBatch(libraryId: string): Promise<ImportB
   return response.json();
 }
 
+export async function getImportBatchDrafts(
+  libraryId: string,
+  importBatchId: string
+): Promise<QuestionDraft[]> {
+  let response: Response;
+
+  try {
+    response = await fetch(
+      `${API_BASE_URL}/api/libraries/${libraryId}/import-batches/${importBatchId}/drafts`
+    );
+  } catch {
+    throw new Error('无法连接草稿服务，请检查电脑后端是否正在运行');
+  }
+
+  if (!response.ok) {
+    let message = '读取本批次草稿失败，请稍后重试';
+    try {
+      const errorBody: { message?: string } = await response.json();
+      message = errorBody.message || message;
+    } catch {
+      // Keep the default error message when the server does not return JSON.
+    }
+    throw new Error(message);
+  }
+
+  return response.json();
+}
+
 export async function getImportFileDrafts(
   libraryId: string,
   importFileId: string
