@@ -41,14 +41,17 @@ import com.wangyue.backend.service.QuestionDraftService;
 import com.wangyue.backend.service.OcrService;
 import com.wangyue.backend.service.ImportService;
 import com.wangyue.backend.service.LlmService;
+import com.wangyue.backend.service.WordDocumentService;
 import java.awt.Color;
 import java.awt.Font;
 import java.awt.Graphics2D;
 import java.awt.image.BufferedImage;
+import java.io.OutputStream;
 import javax.imageio.ImageIO;
 import java.util.List;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import org.apache.poi.xwpf.usermodel.XWPFDocument;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -125,6 +128,9 @@ class BackendApplicationTests {
 	private LlmService llmService;
 
 	@Autowired
+	private WordDocumentService wordDocumentService;
+
+	@Autowired
 	private MockMvc mockMvc;
 
 	@Test
@@ -159,6 +165,77 @@ class BackendApplicationTests {
 			assertTrue(!recognizedText.isBlank());
 		} finally {
 			Files.deleteIfExists(imagePath);
+		}
+	}
+
+	@Test
+	void wordDocumentServiceReadsTextFromATemporaryDocx() throws Exception {
+		Path documentPath = Files.createTempFile("word-document-service-test-", ".docx");
+		try {
+			try (
+				XWPFDocument document = new XWPFDocument();
+				OutputStream outputStream = Files.newOutputStream(documentPath)
+			) {
+				document.createParagraph().createRun().setText("1. 进程调度的作用是？");
+				document.createParagraph().createRun().setText("A. 选择下一个运行进程");
+				document.write(outputStream);
+			}
+
+			String text = wordDocumentService.extractText(documentPath);
+			assertTrue(text.contains("进程调度的作用是？"));
+			assertTrue(text.contains("选择下一个运行进程"));
+		} finally {
+			Files.deleteIfExists(documentPath);
+		}
+	}
+
+	@Test
+	void wordRecognitionChangesOnlyItsOwnFileStatus() throws Exception {
+		LearningLibrary library = learningLibraryService.create("word-flow-test-" + System.nanoTime());
+		Path documentPath = Files.createTempFile("word-import-test-", ".docx");
+		ImportBatch batch = new ImportBatch();
+		batch.setLibraryId(library.getId());
+		batch.setStatus("WAITING_RECOGNITION");
+		importBatchMapper.insert(batch);
+
+		ImportFile wordFile = new ImportFile();
+		wordFile.setImportBatchId(batch.getId());
+		wordFile.setOriginalFileName("questions.docx");
+		wordFile.setStoredFilePath(documentPath.toString());
+		wordFile.setFileType("application/octet-stream");
+		wordFile.setFileSizeBytes(1L);
+		wordFile.setStatus("WAITING_RECOGNITION");
+
+		ImportFile unrelatedFile = new ImportFile();
+		unrelatedFile.setImportBatchId(batch.getId());
+		unrelatedFile.setOriginalFileName("still-waiting.png");
+		unrelatedFile.setStoredFilePath(documentPath.toString());
+		unrelatedFile.setFileType("image/png");
+		unrelatedFile.setFileSizeBytes(1L);
+		unrelatedFile.setStatus("WAITING_RECOGNITION");
+
+		try {
+			try (
+				XWPFDocument document = new XWPFDocument();
+				OutputStream outputStream = Files.newOutputStream(documentPath)
+			) {
+				document.createParagraph().createRun().setText("1. 进程调度的作用是？");
+				document.createParagraph().createRun().setText("A. 选择下一个运行进程");
+				document.write(outputStream);
+			}
+			importFileMapper.insert(wordFile);
+			importFileMapper.insert(unrelatedFile);
+
+			ImportFileResponse result = importService.recognizeFile(library.getId(), wordFile.getId());
+			assertEquals("WAITING_STRUCTURING", result.getStatus());
+			assertTrue(importFileMapper.selectById(wordFile.getId()).getRecognitionText().contains("进程调度"));
+			assertEquals("WAITING_RECOGNITION", importFileMapper.selectById(unrelatedFile.getId()).getStatus());
+		} finally {
+			Files.deleteIfExists(documentPath);
+			importFileMapper.deleteById(wordFile.getId());
+			importFileMapper.deleteById(unrelatedFile.getId());
+			importBatchMapper.deleteById(batch.getId());
+			learningLibraryMapper.deleteById(library.getId());
 		}
 	}
 

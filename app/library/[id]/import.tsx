@@ -22,7 +22,7 @@ function getImportStatusText(file: ImportFileResult, kind?: PendingImportFile['k
     case 'WAITING_RECOGNITION':
       return kind === 'word' ? '已上传，等待 Word 解析' : '已上传，等待识别';
     case 'RECOGNIZING':
-      return '正在识别图片';
+      return kind === 'word' ? '正在解析 Word' : '正在识别图片';
     case 'WAITING_STRUCTURING':
       return '已识别，等待生成题目';
     case 'STRUCTURING':
@@ -135,7 +135,7 @@ export default function ImportQuestionsScreen() {
       );
 
       for (const [index, uploadedFile] of result.files.entries()) {
-        if (filesForThisUpload[index]?.kind !== 'image' || uploadedFile.status !== 'WAITING_RECOGNITION') {
+        if (uploadedFile.status !== 'WAITING_RECOGNITION') {
           continue;
         }
 

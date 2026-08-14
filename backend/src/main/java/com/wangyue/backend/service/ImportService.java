@@ -16,6 +16,7 @@ import com.wangyue.backend.mapper.QuestionDraftMapper;
 import com.wangyue.backend.mapper.QuestionDraftOptionMapper;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Locale;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 import tools.jackson.core.JacksonException;
@@ -32,6 +33,7 @@ public class ImportService {
     private final ImportFileMapper importFileMapper;
     private final ImportStorageService importStorageService;
     private final OcrService ocrService;
+    private final WordDocumentService wordDocumentService;
     private final LlmService llmService;
     private final QuestionDraftService questionDraftService;
     private final QuestionDraftMapper questionDraftMapper;
@@ -44,6 +46,7 @@ public class ImportService {
         ImportFileMapper importFileMapper,
         ImportStorageService importStorageService,
         OcrService ocrService,
+        WordDocumentService wordDocumentService,
         LlmService llmService,
         QuestionDraftService questionDraftService,
         QuestionDraftMapper questionDraftMapper,
@@ -55,6 +58,7 @@ public class ImportService {
         this.importFileMapper = importFileMapper;
         this.importStorageService = importStorageService;
         this.ocrService = ocrService;
+        this.wordDocumentService = wordDocumentService;
         this.llmService = llmService;
         this.questionDraftService = questionDraftService;
         this.questionDraftMapper = questionDraftMapper;
@@ -173,16 +177,12 @@ public class ImportService {
         if (!"WAITING_RECOGNITION".equals(importFile.getStatus())) {
             throw new IllegalStateException("当前文件不处于等待识别状态");
         }
-        if (importFile.getFileType() == null || !importFile.getFileType().startsWith("image/")) {
-            throw new IllegalArgumentException("当前文件不是图片，不能使用图片识别");
-        }
-
         importFile.setStatus("RECOGNIZING");
         importFile.setErrorMessage(null);
         importFileMapper.updateById(importFile);
 
         try {
-            String recognitionText = ocrService.recognizeImage(Path.of(importFile.getStoredFilePath()));
+            String recognitionText = extractRecognitionText(importFile);
             importFile.setRecognitionText(recognitionText);
             importFile.setStatus("WAITING_STRUCTURING");
             importFileMapper.updateById(importFile);
@@ -193,6 +193,26 @@ public class ImportService {
         }
 
         return toFileResponse(importFile);
+    }
+
+    private String extractRecognitionText(ImportFile importFile) {
+        Path storedFilePath = Path.of(importFile.getStoredFilePath());
+        if (isWordDocument(importFile)) {
+            return wordDocumentService.extractText(storedFilePath);
+        }
+        if (isImageFile(importFile)) {
+            return ocrService.recognizeImage(storedFilePath);
+        }
+        throw new IllegalArgumentException("当前文件不是支持的图片或 .docx Word 文件");
+    }
+
+    private boolean isWordDocument(ImportFile importFile) {
+        String originalFileName = importFile.getOriginalFileName();
+        return originalFileName != null && originalFileName.toLowerCase(Locale.ROOT).endsWith(".docx");
+    }
+
+    private boolean isImageFile(ImportFile importFile) {
+        return importFile.getFileType() != null && importFile.getFileType().startsWith("image/");
     }
 
     public ImportFileResponse structureFile(Long libraryId, Long importFileId) {
