@@ -1,6 +1,6 @@
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { Alert, Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useLibraries } from '../../contexts/LibraryContext';
 import { fetchPracticeQuestions, fetchWrongQuestions, type PracticeQuestion } from '../../services/questionApi';
 
@@ -48,10 +48,6 @@ export default function LibraryDetailScreen() {
     }, [reloadQuestionSummary])
   );
 
-  function showNextStageMessage(featureName: string) {
-    Alert.alert(featureName, '这个功能会在后续阶段实现。');
-  }
-
   if (!selectedLibrary) {
     return null;
   }
@@ -96,52 +92,87 @@ export default function LibraryDetailScreen() {
   }
 
   return (
-    <View style={styles.container}>
-      <Pressable style={styles.backButton} onPress={() => router.back()}>
-        <Text style={styles.backButtonText}>‹ 返回</Text>
-      </Pressable>
-      <Text style={styles.title}>{selectedLibrary.name}</Text>
-      <Text style={styles.meta}>共 {libraryQuestions.length} 题</Text>
-      <Text style={styles.meta}>{wrongQuestionCount} 道错题</Text>
-      <Text style={styles.questionTitle}>示例题目（{libraryQuestions.length}）</Text>
-      {libraryQuestions.length === 0 ? (
-        <Text style={styles.emptyText}>暂无题目，后续可通过“导入题目”加入题库。</Text>
-      ) : (
-        libraryQuestions.map((question) => (
+    <View style={styles.screen}>
+      <ScrollView contentContainerStyle={styles.container}>
+        <Pressable style={styles.backButton} onPress={() => router.back()}>
+          <Text style={styles.backButtonText}>‹ 返回</Text>
+        </Pressable>
+        <Text style={styles.title}>{selectedLibrary.name}</Text>
+        <Text style={styles.meta}>
+          {isQuestionSummaryLoading
+            ? '题目统计加载中...'
+            : `共 ${libraryQuestions.length} 题 · ${wrongQuestionCount} 道错题`}
+        </Text>
+        {questionSummaryError && <Text style={styles.errorText}>{questionSummaryError}</Text>}
+
+        <View style={styles.primaryActionGroup}>
           <Pressable
-            key={question.id}
-            style={styles.questionCard}
-            onPress={() => router.push({
-              pathname: '/library/[id]/questions/[questionId]',
-              params: { id, questionId: question.id },
-            })}>
-            <Text style={styles.questionType}>{questionTypeLabels[question.type]}</Text>
-            <Text style={styles.questionStem}>{question.stem}</Text>
-            <Text style={styles.questionHint}>点击查看题目详情</Text>
+            style={styles.primaryButton}
+            onPress={() => router.push(`/library/${id}/import`)}>
+            <Text style={styles.primaryButtonText}>导入题目</Text>
           </Pressable>
-        ))
-      )}
-      <Pressable style={styles.actionButton} onPress={openEditModal}>
-        <Text style={styles.actionButtonText}>编辑学习库名称</Text>
-      </Pressable>
-      <Pressable style={styles.actionButton} onPress={confirmDeleteLibrary}>
-        <Text style={styles.deleteButtonText}>删除学习库</Text>
-      </Pressable>
-      <Pressable
-        style={styles.primaryButton}
-        onPress={() => router.push(`/library/${id}/import`)}>
-        <Text style={styles.primaryButtonText}>导入题目</Text>
-      </Pressable>
-      <Pressable style={styles.actionButton} onPress={() => router.push(`/library/${id}/practice`)}>
-        <Text style={styles.actionButtonText}>刷完整题库</Text>
-      </Pressable>
-      <Pressable
-        style={styles.actionButton}
-        onPress={() =>
-          router.push({ pathname: '/library/[id]/practice', params: { id, mode: 'wrong' } })
-        }>
-        <Text style={styles.actionButtonText}>刷错题集</Text>
-      </Pressable>
+          <Pressable style={styles.actionButton} onPress={() => router.push(`/library/${id}/practice`)}>
+            <Text style={styles.actionButtonText}>刷完整题库</Text>
+          </Pressable>
+          <Pressable
+            disabled={isQuestionSummaryLoading || wrongQuestionCount === 0}
+            style={[
+              styles.actionButton,
+              (isQuestionSummaryLoading || wrongQuestionCount === 0) && styles.disabledActionButton,
+            ]}
+            onPress={() =>
+              router.push({ pathname: '/library/[id]/practice', params: { id, mode: 'wrong' } })
+            }>
+            <Text
+              style={[
+                styles.actionButtonText,
+                (isQuestionSummaryLoading || wrongQuestionCount === 0) && styles.disabledActionButtonText,
+              ]}>
+              刷错题集（{isQuestionSummaryLoading ? '...' : wrongQuestionCount}）
+            </Text>
+          </Pressable>
+        </View>
+
+        <View style={styles.previewTitleRow}>
+          <Text style={styles.questionTitle}>题目预览（{libraryQuestions.length}）</Text>
+          {libraryQuestions.length > 0 && (
+            <Pressable onPress={() => router.push(`/library/${id}/questions`)}>
+              <Text style={styles.viewAllText}>查看全部 ›</Text>
+            </Pressable>
+          )}
+        </View>
+        <Text style={styles.previewHint}>这里只显示最多 3 道题；全部题目将在下一页查看。</Text>
+        {libraryQuestions.length === 0 ? (
+          <Text style={styles.emptyText}>暂无题目，可通过“导入题目”加入题库。</Text>
+        ) : (
+          libraryQuestions.slice(0, 3).map((question) => (
+            <Pressable
+              key={question.id}
+              style={styles.questionCard}
+              onPress={() => router.push({
+                pathname: '/library/[id]/questions/[questionId]',
+                params: { id, questionId: question.id },
+              })}>
+              <Text style={styles.questionType}>{questionTypeLabels[question.type]}</Text>
+              <Text style={styles.questionStem}>{question.stem}</Text>
+              <Text style={styles.questionHint}>点击查看题目详情</Text>
+            </Pressable>
+          ))
+        )}
+        {libraryQuestions.length > 3 && (
+          <Text style={styles.previewHint}>还有 {libraryQuestions.length - 3} 道题将在“全部题目”页查看。</Text>
+        )}
+
+        <View style={styles.managementSection}>
+          <Text style={styles.managementTitle}>学习库管理</Text>
+          <Pressable style={styles.actionButton} onPress={openEditModal}>
+            <Text style={styles.actionButtonText}>编辑学习库名称</Text>
+          </Pressable>
+          <Pressable style={styles.actionButton} onPress={confirmDeleteLibrary}>
+            <Text style={styles.deleteButtonText}>删除学习库</Text>
+          </Pressable>
+        </View>
+      </ScrollView>
       <Modal animationType="fade" transparent visible={isEditModalVisible}>
         <View style={{ flex: 1, justifyContent: 'center', padding: 20 }}>
           <View style={{ backgroundColor: '#FFFFFF', borderRadius: 16, padding: 20 }}>
@@ -161,10 +192,14 @@ export default function LibraryDetailScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
+  screen: {
+    backgroundColor: '#F8FAFC',
     flex: 1,
+  },
+  container: {
     paddingHorizontal: 20,
     paddingTop: 64,
+    paddingBottom: 40,
   },
   backButton: {
     marginBottom: 24,
@@ -178,14 +213,40 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   meta: {
+    color: '#64748B',
     fontSize: 16,
     marginTop: 12,
+  },
+  errorText: {
+    color: '#DC2626',
+    fontSize: 14,
+    marginTop: 10,
+  },
+  primaryActionGroup: {
+    marginTop: 28,
   },
   questionTitle: {
     color: '#0F172A',
     fontSize: 18,
     fontWeight: '700',
-    marginTop: 28,
+    marginTop: 32,
+  },
+  previewTitleRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  viewAllText: {
+    color: '#2563EB',
+    fontSize: 14,
+    fontWeight: '700',
+    marginTop: 32,
+  },
+  previewHint: {
+    color: '#64748B',
+    fontSize: 13,
+    lineHeight: 20,
+    marginTop: 8,
   },
   questionCard: {
     backgroundColor: '#F8FAFC',
@@ -238,6 +299,21 @@ const styles = StyleSheet.create({
   actionButtonText: {
     color: '#2563EB',
     fontSize: 16,
+    fontWeight: '700',
+  },
+  disabledActionButton: {
+    backgroundColor: '#F1F5F9',
+    borderColor: '#CBD5E1',
+  },
+  disabledActionButtonText: {
+    color: '#94A3B8',
+  },
+  managementSection: {
+    marginTop: 32,
+  },
+  managementTitle: {
+    color: '#0F172A',
+    fontSize: 18,
     fontWeight: '700',
   },
   deleteButtonText: {
