@@ -4,7 +4,12 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useLibraries } from '../../../contexts/LibraryContext';
-import { ImportFileResult, recognizeImportFile, uploadImportFiles } from '../../../services/importApi';
+import {
+  ImportFileResult,
+  recognizeImportFile,
+  structureImportFile,
+  uploadImportFiles,
+} from '../../../services/importApi';
 
 type PendingImportFile = {
   uri: string;
@@ -20,8 +25,14 @@ function getImportStatusText(file: ImportFileResult, kind?: PendingImportFile['k
       return '正在识别图片';
     case 'WAITING_STRUCTURING':
       return '已识别，等待生成题目';
+    case 'STRUCTURING':
+      return '正在生成题目草稿';
+    case 'WAITING_CONFIRMATION':
+      return '题目草稿已生成，等待确认';
     case 'RECOGNITION_FAILED':
       return `识别失败：${file.errorMessage || '请稍后重试'}`;
+    case 'STRUCTURING_FAILED':
+      return `生成题目失败：${file.errorMessage || '请稍后重试'}`;
     case 'UPLOAD_FAILED':
       return `上传失败：${file.errorMessage || '请稍后重试'}`;
   }
@@ -155,6 +166,28 @@ export default function ImportQuestionsScreen() {
     }
   }
 
+  async function structureUploadedFile(uploadedFile: ImportFileResult) {
+    setUploadResults((currentFiles) => currentFiles.map((file) =>
+      file.id === uploadedFile.id
+        ? { ...file, status: 'STRUCTURING' as const, errorMessage: null }
+        : file
+    ));
+
+    try {
+      const structuredFile = await structureImportFile(id, uploadedFile.id);
+      setUploadResults((currentFiles) => currentFiles.map((file) =>
+        file.id === structuredFile.id ? structuredFile : file
+      ));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '题目草稿生成失败，请稍后重试';
+      setUploadResults((currentFiles) => currentFiles.map((file) =>
+        file.id === uploadedFile.id
+          ? { ...file, status: 'STRUCTURING_FAILED', errorMessage: message }
+          : file
+      ));
+    }
+  }
+
   if (!library) {
     return <Text style={styles.emptyText}>学习库不存在。</Text>;
   }
@@ -202,9 +235,30 @@ export default function ImportQuestionsScreen() {
         <View>
           <Text style={styles.sectionTitle}>导入结果</Text>
           {uploadResults.map((file) => (
-            <Text key={file.id} style={styles.fileName}>
-              {file.originalFileName}：{getImportStatusText(file, fileKinds[file.id])}
-            </Text>
+            <View key={file.id} style={styles.resultCard}>
+              <Text style={styles.fileName}>
+                {file.originalFileName}：{getImportStatusText(file, fileKinds[file.id])}
+              </Text>
+              {file.status === 'WAITING_STRUCTURING' && (
+                <Pressable
+                  style={styles.structureButton}
+                  onPress={() => structureUploadedFile(file)}
+                >
+                  <Text style={styles.structureButtonText}>生成题目草稿</Text>
+                </Pressable>
+              )}
+              {file.status === 'WAITING_CONFIRMATION' && (
+                <Pressable
+                  style={styles.structureButton}
+                  onPress={() => router.push({
+                    pathname: '/library/[id]/drafts/[importFileId]',
+                    params: { id, importFileId: String(file.id) },
+                  })}
+                >
+                  <Text style={styles.structureButtonText}>查看题目草稿</Text>
+                </Pressable>
+              )}
+            </View>
           ))}
         </View>
       )}
@@ -222,6 +276,9 @@ const styles = StyleSheet.create({
   optionTitle: { color: '#0F172A', fontSize: 17, fontWeight: '700' },
   optionDescription: { color: '#64748B', fontSize: 14, marginTop: 6 },
   fileName: { backgroundColor: '#FFFFFF', borderRadius: 8, color: '#334155', marginTop: 8, padding: 12 },
+  resultCard: { backgroundColor: '#FFFFFF', borderRadius: 8, marginTop: 8, padding: 12 },
+  structureButton: { alignItems: 'center', borderColor: '#2563EB', borderRadius: 8, borderWidth: 1, marginTop: 10, paddingVertical: 10 },
+  structureButtonText: { color: '#2563EB', fontSize: 14, fontWeight: '700' },
   uploadButton: { alignItems: 'center', backgroundColor: '#2563EB', borderRadius: 10, marginTop: 16, paddingVertical: 14 },
   uploadButtonDisabled: { backgroundColor: '#93C5FD' },
   uploadButtonText: { color: '#FFFFFF', fontSize: 15, fontWeight: '700' },

@@ -5,6 +5,7 @@ import com.wangyue.backend.dto.ImportBatchResponse;
 import com.wangyue.backend.dto.ImportFileResponse;
 import com.wangyue.backend.dto.QuestionDraftOptionResponse;
 import com.wangyue.backend.dto.QuestionDraftResponse;
+import com.wangyue.backend.dto.UpdateQuestionDraftRequest;
 import com.wangyue.backend.entity.ImportBatch;
 import com.wangyue.backend.entity.ImportFile;
 import com.wangyue.backend.entity.QuestionDraft;
@@ -24,11 +25,15 @@ import tools.jackson.databind.ObjectMapper;
 @Service
 public class ImportService {
 
+    private static final int MAX_ERROR_MESSAGE_LENGTH = 480;
+
     private final LearningLibraryService learningLibraryService;
     private final ImportBatchMapper importBatchMapper;
     private final ImportFileMapper importFileMapper;
     private final ImportStorageService importStorageService;
     private final OcrService ocrService;
+    private final LlmService llmService;
+    private final QuestionDraftService questionDraftService;
     private final QuestionDraftMapper questionDraftMapper;
     private final QuestionDraftOptionMapper questionDraftOptionMapper;
     private final ObjectMapper objectMapper;
@@ -39,6 +44,8 @@ public class ImportService {
         ImportFileMapper importFileMapper,
         ImportStorageService importStorageService,
         OcrService ocrService,
+        LlmService llmService,
+        QuestionDraftService questionDraftService,
         QuestionDraftMapper questionDraftMapper,
         QuestionDraftOptionMapper questionDraftOptionMapper,
         ObjectMapper objectMapper
@@ -48,6 +55,8 @@ public class ImportService {
         this.importFileMapper = importFileMapper;
         this.importStorageService = importStorageService;
         this.ocrService = ocrService;
+        this.llmService = llmService;
+        this.questionDraftService = questionDraftService;
         this.questionDraftMapper = questionDraftMapper;
         this.questionDraftOptionMapper = questionDraftOptionMapper;
         this.objectMapper = objectMapper;
@@ -132,6 +141,33 @@ public class ImportService {
         ).stream().map(this::toDraftResponse).toList();
     }
 
+    public QuestionDraftResponse updateDraft(
+        Long libraryId,
+        Long importFileId,
+        Long draftId,
+        UpdateQuestionDraftRequest request
+    ) {
+        findOwnedImportFile(libraryId, importFileId);
+        questionDraftService.updateDraft(libraryId, importFileId, draftId, request);
+
+        QuestionDraft draft = questionDraftMapper.selectById(draftId);
+        if (draft == null) {
+            throw new IllegalArgumentException("题目草稿不存在");
+        }
+        return toDraftResponse(draft);
+    }
+
+    public QuestionDraftResponse confirmDraft(Long libraryId, Long importFileId, Long draftId) {
+        findOwnedImportFile(libraryId, importFileId);
+        questionDraftService.confirmDraft(libraryId, importFileId, draftId);
+
+        QuestionDraft draft = questionDraftMapper.selectById(draftId);
+        if (draft == null) {
+            throw new IllegalArgumentException("题目草稿不存在");
+        }
+        return toDraftResponse(draft);
+    }
+
     public ImportFileResponse recognizeFile(Long libraryId, Long importFileId) {
         ImportFile importFile = findOwnedImportFile(libraryId, importFileId);
         if (!"WAITING_RECOGNITION".equals(importFile.getStatus())) {
@@ -152,7 +188,39 @@ public class ImportService {
             importFileMapper.updateById(importFile);
         } catch (RuntimeException exception) {
             importFile.setStatus("RECOGNITION_FAILED");
-            importFile.setErrorMessage(exception.getMessage());
+            importFile.setErrorMessage(toStoredErrorMessage(exception));
+            importFileMapper.updateById(importFile);
+        }
+
+        return toFileResponse(importFile);
+    }
+
+    public ImportFileResponse structureFile(Long libraryId, Long importFileId) {
+        ImportFile importFile = findOwnedImportFile(libraryId, importFileId);
+        if (!"WAITING_STRUCTURING".equals(importFile.getStatus())) {
+            throw new IllegalStateException("当前文件不处于等待生成题目状态");
+        }
+        if (importFile.getRecognitionText() == null || importFile.getRecognitionText().isBlank()) {
+            importFile.setStatus("STRUCTURING_FAILED");
+            importFile.setErrorMessage("没有可生成题目的识别文字");
+            importFileMapper.updateById(importFile);
+            return toFileResponse(importFile);
+        }
+
+        importFile.setStatus("STRUCTURING");
+        importFile.setErrorMessage(null);
+        importFileMapper.updateById(importFile);
+
+        try {
+            questionDraftService.saveRecognitionResult(
+                importFile.getId(),
+                importFile.getRecognitionText(),
+                llmService.structureQuestions(importFile.getRecognitionText())
+            );
+            importFile.setStatus("WAITING_CONFIRMATION");
+        } catch (RuntimeException exception) {
+            importFile.setStatus("STRUCTURING_FAILED");
+            importFile.setErrorMessage(toStoredErrorMessage(exception));
             importFileMapper.updateById(importFile);
         }
 
@@ -204,6 +272,16 @@ public class ImportService {
         response.setStatus(importFile.getStatus());
         response.setErrorMessage(importFile.getErrorMessage());
         return response;
+    }
+
+    private String toStoredErrorMessage(RuntimeException exception) {
+        String message = exception.getMessage();
+        if (message == null || message.isBlank()) {
+            return "图片识别失败，请稍后重试";
+        }
+        return message.length() <= MAX_ERROR_MESSAGE_LENGTH
+            ? message
+            : message.substring(0, MAX_ERROR_MESSAGE_LENGTH - 1) + "…";
     }
 
     private List<String> readStringList(String jsonText) {

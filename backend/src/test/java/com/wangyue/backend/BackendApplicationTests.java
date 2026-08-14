@@ -1,6 +1,7 @@
 package com.wangyue.backend;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -39,6 +40,7 @@ import com.wangyue.backend.service.PracticeService;
 import com.wangyue.backend.service.QuestionDraftService;
 import com.wangyue.backend.service.OcrService;
 import com.wangyue.backend.service.ImportService;
+import com.wangyue.backend.service.LlmService;
 import java.awt.Color;
 import java.awt.Font;
 import java.awt.Graphics2D;
@@ -120,7 +122,24 @@ class BackendApplicationTests {
 	private OcrService ocrService;
 
 	@Autowired
+	private LlmService llmService;
+
+	@Autowired
 	private MockMvc mockMvc;
+
+	@Test
+	void llmServiceTurnsRecognizedTextIntoQuestionObjects() {
+		List<RecognizedQuestion> questions = llmService.structureQuestions("""
+			1. 1 + 1 等于几？
+			A. 1
+			B. 2
+			答案：B
+			""");
+
+		assertFalse(questions.isEmpty());
+		assertFalse(questions.get(0).getStem().isBlank());
+		assertFalse(questions.get(0).getOptions().isEmpty());
+	}
 
 	@Test
 	void ocrServiceCanReadTextFromATemporaryImage() throws Exception {
@@ -460,6 +479,105 @@ class BackendApplicationTests {
 				new LambdaQueryWrapper<Question>().eq(Question::getLibraryId, library.getId())
 			));
 			assertEquals("WAITING_CONFIRMATION", importFileMapper.selectById(importFileId).getStatus());
+		} finally {
+			List<ImportFile> importedFiles = importFileMapper.selectList(
+				new LambdaQueryWrapper<ImportFile>().eq(ImportFile::getOriginalFileName, imageFileName)
+			);
+			for (ImportFile importFile : importedFiles) {
+				if (importFile.getStoredFilePath() != null) {
+					Files.deleteIfExists(Path.of(importFile.getStoredFilePath()));
+				}
+			}
+			learningLibraryMapper.deleteById(library.getId());
+		}
+	}
+
+	@Test
+	void confirmedDraftCreatesOneFormalQuestionOnlyOnce() throws Exception {
+		LearningLibrary library = learningLibraryService.create("confirm-draft-" + System.nanoTime());
+		String imageFileName = "confirm-source-" + System.nanoTime() + ".png";
+		try {
+			mockMvc.perform(multipart("/api/libraries/" + library.getId() + "/import-batches")
+				.file(new MockMultipartFile("files", imageFileName, "image/png", "test image".getBytes())))
+				.andExpect(status().isCreated());
+
+			Long importFileId = jdbcTemplate.queryForObject(
+				"SELECT id FROM import_file WHERE original_file_name = ?", Long.class, imageFileName
+			);
+			RecognizedQuestionOption optionA = new RecognizedQuestionOption();
+			optionA.setOptionKey("A");
+			optionA.setContent("1");
+			RecognizedQuestionOption optionB = new RecognizedQuestionOption();
+			optionB.setOptionKey("B");
+			optionB.setContent("2");
+			RecognizedQuestion draftQuestion = new RecognizedQuestion();
+			draftQuestion.setQuestionType("SINGLE_CHOICE");
+			draftQuestion.setStem("1 + 1 等于几？");
+			draftQuestion.setOptions(List.of(optionA, optionB));
+			draftQuestion.setCorrectAnswer(List.of("B"));
+			questionDraftService.saveRecognitionResult(importFileId, "1 + 1 等于几？", List.of(draftQuestion));
+
+			QuestionDraft draft = questionDraftMapper.selectOne(new LambdaQueryWrapper<QuestionDraft>()
+				.eq(QuestionDraft::getImportFileId, importFileId));
+			questionDraftService.confirmDraft(library.getId(), importFileId, draft.getId());
+
+			assertEquals("CONFIRMED", questionDraftMapper.selectById(draft.getId()).getStatus());
+			assertEquals(1, questionMapper.selectCount(
+				new LambdaQueryWrapper<Question>().eq(Question::getLibraryId, library.getId())
+			));
+			assertThrows(IllegalStateException.class, () ->
+				questionDraftService.confirmDraft(library.getId(), importFileId, draft.getId())
+			);
+			assertEquals(1, questionMapper.selectCount(
+				new LambdaQueryWrapper<Question>().eq(Question::getLibraryId, library.getId())
+			));
+		} finally {
+			List<ImportFile> importedFiles = importFileMapper.selectList(
+				new LambdaQueryWrapper<ImportFile>().eq(ImportFile::getOriginalFileName, imageFileName)
+			);
+			for (ImportFile importFile : importedFiles) {
+				if (importFile.getStoredFilePath() != null) {
+					Files.deleteIfExists(Path.of(importFile.getStoredFilePath()));
+				}
+			}
+			learningLibraryMapper.deleteById(library.getId());
+		}
+	}
+
+	@Test
+	void structuredFileCreatesDraftsButNeverCreatesFormalQuestions() throws Exception {
+		LearningLibrary library = learningLibraryService.create("llm-structure-" + System.nanoTime());
+		String imageFileName = "llm-source-" + System.nanoTime() + ".png";
+		try {
+			mockMvc.perform(multipart("/api/libraries/" + library.getId() + "/import-batches")
+				.file(new MockMultipartFile("files", imageFileName, "image/png", "test image".getBytes())))
+				.andExpect(status().isCreated());
+
+			Long importFileId = jdbcTemplate.queryForObject(
+				"SELECT id FROM import_file WHERE original_file_name = ?", Long.class, imageFileName
+			);
+			ImportFile importFile = importFileMapper.selectById(importFileId);
+			importFile.setStatus("WAITING_STRUCTURING");
+			importFile.setRecognitionText("""
+				1. 1 + 1 等于几？
+				A. 1
+				B. 2
+				答案：B
+				""");
+			importFileMapper.updateById(importFile);
+
+			Long formalQuestionCountBefore = questionMapper.selectCount(
+				new LambdaQueryWrapper<Question>().eq(Question::getLibraryId, library.getId())
+			);
+			ImportFileResponse result = importService.structureFile(library.getId(), importFileId);
+
+			assertEquals("WAITING_CONFIRMATION", result.getStatus());
+			assertTrue(questionDraftMapper.selectCount(
+				new LambdaQueryWrapper<QuestionDraft>().eq(QuestionDraft::getImportFileId, importFileId)
+			) > 0);
+			assertEquals(formalQuestionCountBefore, questionMapper.selectCount(
+				new LambdaQueryWrapper<Question>().eq(Question::getLibraryId, library.getId())
+			));
 		} finally {
 			List<ImportFile> importedFiles = importFileMapper.selectList(
 				new LambdaQueryWrapper<ImportFile>().eq(ImportFile::getOriginalFileName, imageFileName)

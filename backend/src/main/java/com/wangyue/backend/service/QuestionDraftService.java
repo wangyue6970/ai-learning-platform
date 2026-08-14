@@ -2,14 +2,18 @@ package com.wangyue.backend.service;
 
 import com.wangyue.backend.dto.RecognizedQuestion;
 import com.wangyue.backend.dto.RecognizedQuestionOption;
+import com.wangyue.backend.dto.CreateQuestionOptionRequest;
+import com.wangyue.backend.dto.UpdateQuestionDraftRequest;
 import com.wangyue.backend.entity.ImportFile;
 import com.wangyue.backend.entity.ImportBatch;
 import com.wangyue.backend.entity.QuestionDraft;
 import com.wangyue.backend.entity.QuestionDraftOption;
+import com.wangyue.backend.entity.Question;
 import com.wangyue.backend.mapper.ImportFileMapper;
 import com.wangyue.backend.mapper.ImportBatchMapper;
 import com.wangyue.backend.mapper.QuestionDraftMapper;
 import com.wangyue.backend.mapper.QuestionDraftOptionMapper;
+import com.wangyue.backend.dto.CreateQuestionRequest;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -29,6 +33,7 @@ public class QuestionDraftService {
     private final ImportBatchMapper importBatchMapper;
     private final QuestionDraftMapper questionDraftMapper;
     private final QuestionDraftOptionMapper questionDraftOptionMapper;
+    private final QuestionService questionService;
     private final ObjectMapper objectMapper;
 
     public QuestionDraftService(
@@ -36,12 +41,14 @@ public class QuestionDraftService {
         ImportBatchMapper importBatchMapper,
         QuestionDraftMapper questionDraftMapper,
         QuestionDraftOptionMapper questionDraftOptionMapper,
+        QuestionService questionService,
         ObjectMapper objectMapper
     ) {
         this.importFileMapper = importFileMapper;
         this.importBatchMapper = importBatchMapper;
         this.questionDraftMapper = questionDraftMapper;
         this.questionDraftOptionMapper = questionDraftOptionMapper;
+        this.questionService = questionService;
         this.objectMapper = objectMapper;
     }
 
@@ -77,6 +84,91 @@ public class QuestionDraftService {
         }
     }
 
+    /**
+     * 保存用户对草稿的修正。这里不创建正式 Question；正式入库由之后的确认动作单独完成。
+     */
+    @Transactional
+    public void updateDraft(
+        Long libraryId,
+        Long importFileId,
+        Long draftId,
+        UpdateQuestionDraftRequest request
+    ) {
+        QuestionDraft draft = questionDraftMapper.selectById(draftId);
+        if (draft == null || !libraryId.equals(draft.getLibraryId())
+            || !importFileId.equals(draft.getImportFileId())) {
+            throw new IllegalArgumentException("题目草稿不属于当前学习库或导入文件");
+        }
+        if (!"WAITING_CONFIRMATION".equals(draft.getStatus())) {
+            throw new IllegalStateException("当前题目草稿不能再编辑");
+        }
+
+        validateDraftUpdateRequest(request);
+        draft.setQuestionType(request.getQuestionType().trim());
+        draft.setStem(request.getStem().trim());
+        draft.setCorrectAnswer(toJsonOrNull(request.getCorrectAnswer()));
+        draft.setExplanation(blankToNull(request.getExplanation()));
+        draft.setKnowledgePoints(toJsonOrNull(request.getKnowledgePoints()));
+        questionDraftMapper.updateById(draft);
+
+        questionDraftOptionMapper.delete(new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<QuestionDraftOption>()
+            .eq(QuestionDraftOption::getQuestionDraftId, draftId));
+        for (int index = 0; index < request.getOptions().size(); index++) {
+            CreateQuestionOptionRequest requestOption = request.getOptions().get(index);
+            QuestionDraftOption option = new QuestionDraftOption();
+            option.setQuestionDraftId(draftId);
+            option.setOptionKey(requestOption.getOptionKey().trim());
+            option.setContent(requestOption.getContent().trim());
+            option.setSortOrder(index + 1);
+            questionDraftOptionMapper.insert(option);
+        }
+    }
+
+    /**
+     * 用户明确确认后，才将一份草稿复制为正式题目。
+     * 创建题目、选项和修改草稿状态处在同一个事务中，任一步失败都会回滚。
+     */
+    @Transactional
+    public void confirmDraft(Long libraryId, Long importFileId, Long draftId) {
+        QuestionDraft draft = questionDraftMapper.selectById(draftId);
+        if (draft == null || !libraryId.equals(draft.getLibraryId())
+            || !importFileId.equals(draft.getImportFileId())) {
+            throw new IllegalArgumentException("题目草稿不属于当前学习库或导入文件");
+        }
+        if (!"WAITING_CONFIRMATION".equals(draft.getStatus())) {
+            throw new IllegalStateException("当前题目草稿已经确认入库，不能重复确认");
+        }
+
+        List<QuestionDraftOption> draftOptions = questionDraftOptionMapper.selectList(
+            new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<QuestionDraftOption>()
+                .eq(QuestionDraftOption::getQuestionDraftId, draftId)
+                .orderByAsc(QuestionDraftOption::getSortOrder)
+        );
+        List<String> answers = readStringList(draft.getCorrectAnswer());
+        validateConfirmableDraft(draft, draftOptions, answers);
+
+        CreateQuestionRequest request = new CreateQuestionRequest();
+        request.setLibraryId(libraryId);
+        request.setQuestionType(draft.getQuestionType());
+        request.setStem(draft.getStem());
+        request.setCorrectAnswer(answers);
+        request.setExplanation(draft.getExplanation());
+        request.setOptions(draftOptions.stream().map(option -> {
+            CreateQuestionOptionRequest optionRequest = new CreateQuestionOptionRequest();
+            optionRequest.setOptionKey(option.getOptionKey());
+            optionRequest.setContent(option.getContent());
+            optionRequest.setSortOrder(option.getSortOrder());
+            return optionRequest;
+        }).toList());
+
+        Question formalQuestion = questionService.create(request);
+        if (formalQuestion.getId() == null) {
+            throw new IllegalStateException("正式题目保存失败");
+        }
+        draft.setStatus("CONFIRMED");
+        questionDraftMapper.updateById(draft);
+    }
+
     private void validateRecognizedQuestion(RecognizedQuestion question) {
         if (question == null || question.getStem() == null || question.getStem().isBlank()) {
             throw new IllegalArgumentException("识别结果缺少题干");
@@ -100,6 +192,56 @@ public class QuestionDraftService {
         }
         if (!"MULTIPLE_CHOICE".equals(question.getQuestionType()) && answers.size() > 1) {
             throw new IllegalArgumentException("单选题和判断题最多只能有一个答案");
+        }
+    }
+
+    private void validateDraftUpdateRequest(UpdateQuestionDraftRequest request) {
+        if (request == null || request.getQuestionType() == null || request.getQuestionType().isBlank()
+            || request.getStem() == null || request.getStem().isBlank()
+            || request.getOptions() == null || request.getOptions().isEmpty()) {
+            throw new IllegalArgumentException("题型、题干和选项不能为空");
+        }
+        if (!SUPPORTED_TYPES.contains(request.getQuestionType().trim())) {
+            throw new IllegalArgumentException("题目类型不支持");
+        }
+
+        Set<String> optionKeys = new HashSet<>();
+        for (CreateQuestionOptionRequest option : request.getOptions()) {
+            if (option == null || option.getOptionKey() == null || option.getOptionKey().isBlank()
+                || option.getContent() == null || option.getContent().isBlank()
+                || !optionKeys.add(option.getOptionKey().trim())) {
+                throw new IllegalArgumentException("选项内容不能为空，且选项标识不能重复");
+            }
+        }
+
+        List<String> answers = request.getCorrectAnswer() == null ? List.of() : request.getCorrectAnswer();
+        if (!optionKeys.containsAll(answers)) {
+            throw new IllegalArgumentException("识别答案必须属于当前选项");
+        }
+        if (!"MULTIPLE_CHOICE".equals(request.getQuestionType().trim()) && answers.size() > 1) {
+            throw new IllegalArgumentException("单选题和判断题最多只能有一个答案");
+        }
+    }
+
+    private void validateConfirmableDraft(
+        QuestionDraft draft,
+        List<QuestionDraftOption> options,
+        List<String> answers
+    ) {
+        UpdateQuestionDraftRequest request = new UpdateQuestionDraftRequest();
+        request.setQuestionType(draft.getQuestionType());
+        request.setStem(draft.getStem());
+        request.setCorrectAnswer(answers);
+        request.setOptions(options.stream().map(option -> {
+            CreateQuestionOptionRequest optionRequest = new CreateQuestionOptionRequest();
+            optionRequest.setOptionKey(option.getOptionKey());
+            optionRequest.setContent(option.getContent());
+            optionRequest.setSortOrder(option.getSortOrder());
+            return optionRequest;
+        }).toList());
+        validateDraftUpdateRequest(request);
+        if (answers.isEmpty()) {
+            throw new IllegalArgumentException("确认入库前必须填写正确答案");
         }
     }
 
@@ -145,6 +287,17 @@ public class QuestionDraftService {
             return objectMapper.writeValueAsString(values);
         } catch (JacksonException exception) {
             throw new IllegalStateException("识别结果无法保存", exception);
+        }
+    }
+
+    private List<String> readStringList(String jsonText) {
+        if (jsonText == null || jsonText.isBlank()) {
+            return List.of();
+        }
+        try {
+            return objectMapper.readValue(jsonText, new tools.jackson.core.type.TypeReference<List<String>>() {});
+        } catch (JacksonException exception) {
+            throw new IllegalStateException("题目草稿的正确答案格式错误", exception);
         }
     }
 
