@@ -46,6 +46,7 @@ export default function ImportQuestionsScreen() {
   const [uploading, setUploading] = useState(false);
   const [uploadResults, setUploadResults] = useState<ImportFileResult[]>([]);
   const [fileKinds, setFileKinds] = useState<Record<number, PendingImportFile['kind']>>({});
+  const [recognitionProgress, setRecognitionProgress] = useState<{ completed: number; total: number } | null>(null);
 
   function addSelectedFiles(files: PendingImportFile[]) {
     setSelectedFiles((currentFiles) => {
@@ -113,31 +114,18 @@ export default function ImportQuestionsScreen() {
     addSelectedFiles([{ uri: wordFile.uri, displayName: wordFile.name, kind: 'word' }]);
   }
 
-  async function uploadSelectedFiles() {
-    if (selectedFiles.length === 0 || uploading) {
-      return;
-    }
+  async function recognizeUploadedFiles(uploadedFiles: ImportFileResult[]) {
+    const filesToRecognize = uploadedFiles.filter((file) => file.status === 'WAITING_RECOGNITION');
+    const maxConcurrentRecognitions = 3;
+    let nextFileIndex = 0;
 
-    // Keep this upload's file list stable while React state is being updated.
-    const filesForThisUpload = selectedFiles;
-    setUploading(true);
-    setUploadResults([]);
+    setRecognitionProgress({ completed: 0, total: filesToRecognize.length });
 
-    try {
-      const result = await uploadImportFiles(id, filesForThisUpload);
-      const uploadedKinds = Object.fromEntries(
-        result.files.map((file, index) => [file.id, filesForThisUpload[index]?.kind || 'image'])
-      ) as Record<number, PendingImportFile['kind']>;
-      setFileKinds(uploadedKinds);
-      setUploadResults(result.files);
-      setSelectedFiles((currentFiles) =>
-        currentFiles.filter((_, index) => result.files[index]?.status === 'UPLOAD_FAILED')
-      );
-
-      for (const [index, uploadedFile] of result.files.entries()) {
-        if (uploadedFile.status !== 'WAITING_RECOGNITION') {
-          continue;
-        }
+    async function recognizeOneFile() {
+      while (nextFileIndex < filesToRecognize.length) {
+        const currentFileIndex = nextFileIndex;
+        nextFileIndex += 1;
+        const uploadedFile = filesToRecognize[currentFileIndex];
 
         try {
           setUploadResults((currentFiles) => currentFiles.map((file) =>
@@ -150,14 +138,48 @@ export default function ImportQuestionsScreen() {
             file.id === recognizedFile.id ? recognizedFile : file
           ));
         } catch (error) {
-          const message = error instanceof Error ? error.message : '图片识别失败，请稍后重试';
+          const message = error instanceof Error ? error.message : '文件识别失败，请稍后重试';
           setUploadResults((currentFiles) => currentFiles.map((file) =>
             file.id === uploadedFile.id
-              ? { ...file, status: 'RECOGNITION_FAILED', errorMessage: message }
+              ? { ...file, status: 'RECOGNITION_FAILED' as const, errorMessage: message }
               : file
           ));
+        } finally {
+          setRecognitionProgress((currentProgress) => currentProgress && {
+            ...currentProgress,
+            completed: currentProgress.completed + 1,
+          });
         }
       }
+    }
+
+    const workerCount = Math.min(maxConcurrentRecognitions, filesToRecognize.length);
+    await Promise.all(Array.from({ length: workerCount }, () => recognizeOneFile()));
+  }
+
+  async function uploadSelectedFiles() {
+    if (selectedFiles.length === 0 || uploading) {
+      return;
+    }
+
+    // Keep this upload's file list stable while React state is being updated.
+    const filesForThisUpload = selectedFiles;
+    setUploading(true);
+    setUploadResults([]);
+    setRecognitionProgress(null);
+
+    try {
+      const result = await uploadImportFiles(id, filesForThisUpload);
+      const uploadedKinds = Object.fromEntries(
+        result.files.map((file, index) => [file.id, filesForThisUpload[index]?.kind || 'image'])
+      ) as Record<number, PendingImportFile['kind']>;
+      setFileKinds(uploadedKinds);
+      setUploadResults(result.files);
+      setSelectedFiles((currentFiles) =>
+        currentFiles.filter((_, index) => result.files[index]?.status === 'UPLOAD_FAILED')
+      );
+
+      await recognizeUploadedFiles(result.files);
     } catch (error) {
       const message = error instanceof Error ? error.message : '文件上传失败，请稍后重试';
       Alert.alert('上传失败', message);
@@ -234,6 +256,11 @@ export default function ImportQuestionsScreen() {
       {uploadResults.length > 0 && (
         <View>
           <Text style={styles.sectionTitle}>导入结果</Text>
+          {recognitionProgress && (
+            <Text style={styles.progressText}>
+              识别进度：{recognitionProgress.completed} / {recognitionProgress.total}
+            </Text>
+          )}
           {uploadResults.map((file) => (
             <View key={file.id} style={styles.resultCard}>
               <Text style={styles.fileName}>
@@ -282,5 +309,6 @@ const styles = StyleSheet.create({
   uploadButton: { alignItems: 'center', backgroundColor: '#2563EB', borderRadius: 10, marginTop: 16, paddingVertical: 14 },
   uploadButtonDisabled: { backgroundColor: '#93C5FD' },
   uploadButtonText: { color: '#FFFFFF', fontSize: 15, fontWeight: '700' },
+  progressText: { color: '#64748B', fontSize: 14, marginTop: 10 },
   emptyText: { flex: 1, padding: 20, paddingTop: 64 },
 });
