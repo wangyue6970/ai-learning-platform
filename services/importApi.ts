@@ -93,52 +93,19 @@ export async function uploadImportFiles(
   return response.json();
 }
 
-export async function recognizeImportFile(
-  libraryId: string,
-  importFileId: number
-): Promise<ImportFileResult> {
+export async function fetchLatestImportBatch(libraryId: string): Promise<ImportBatchResult | null> {
   let response: Response;
 
   try {
     response = await fetch(
-      `${API_BASE_URL}/api/libraries/${libraryId}/import-batches/files/${importFileId}/recognize`,
-      { method: 'POST' }
+      `${API_BASE_URL}/api/libraries/${libraryId}/import-batches/latest`
     );
   } catch {
-    throw new Error('无法连接识别服务，请检查电脑后端是否正在运行');
+    throw new Error('无法读取导入进度，请检查电脑后端是否正在运行');
   }
 
   if (!response.ok) {
-    let message = '图片识别失败，请稍后重试';
-    try {
-      const errorBody: { message?: string } = await response.json();
-      message = errorBody.message || message;
-    } catch {
-      // Keep the default error message when the server does not return JSON.
-    }
-    throw new Error(message);
-  }
-
-  return response.json();
-}
-
-export async function structureImportFile(
-  libraryId: string,
-  importFileId: number
-): Promise<ImportFileResult> {
-  let response: Response;
-
-  try {
-    response = await fetch(
-      `${API_BASE_URL}/api/libraries/${libraryId}/import-batches/files/${importFileId}/structure`,
-      { method: 'POST' }
-    );
-  } catch {
-    throw new Error('无法连接题目生成服务，请检查电脑后端是否正在运行');
-  }
-
-  if (!response.ok) {
-    let message = '题目草稿生成失败，请稍后重试';
+    let message = '读取导入进度失败，请稍后重试';
     try {
       const errorBody: { message?: string } = await response.json();
       message = errorBody.message || message;

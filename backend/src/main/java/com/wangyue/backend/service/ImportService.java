@@ -86,10 +86,27 @@ public class ImportService {
             }
         }
 
-        batch.setStatus(hasSuccessfulFile ? "WAITING_RECOGNITION" : "UPLOAD_FAILED");
+        batch.setStatus(hasSuccessfulFile ? "PROCESSING" : "FAILED");
         importBatchMapper.updateById(batch);
 
         return toResponse(batch);
+    }
+
+    /**
+     * The mobile client uses this after returning to the import page. File
+     * statuses are persisted in MySQL, rather than being kept only in a
+     * screen's memory.
+     */
+    public ImportBatchResponse findLatestBatch(Long libraryId) {
+        if (libraryId == null || learningLibraryService.findById(libraryId) == null) {
+            throw new IllegalArgumentException("学习库不存在");
+        }
+
+        ImportBatch batch = importBatchMapper.selectOne(new LambdaQueryWrapper<ImportBatch>()
+            .eq(ImportBatch::getLibraryId, libraryId)
+            .orderByDesc(ImportBatch::getId)
+            .last("LIMIT 1"));
+        return batch == null ? null : toResponse(batch);
     }
 
     private boolean saveOneFile(Long batchId, MultipartFile file) {
@@ -241,10 +258,67 @@ public class ImportService {
         } catch (RuntimeException exception) {
             importFile.setStatus("STRUCTURING_FAILED");
             importFile.setErrorMessage(toStoredErrorMessage(exception));
-            importFileMapper.updateById(importFile);
         }
 
+        importFileMapper.updateById(importFile);
+
         return toFileResponse(importFile);
+    }
+
+    /** Runs inside the server queue; it never creates a formal question. */
+    public void processFileInBackground(Long importFileId) {
+        ImportFile importFile = importFileMapper.selectById(importFileId);
+        if (importFile == null) {
+            return;
+        }
+        ImportBatch batch = importBatchMapper.selectById(importFile.getImportBatchId());
+        if (batch == null) {
+            return;
+        }
+
+        if ("WAITING_RECOGNITION".equals(importFile.getStatus())) {
+            recognizeFile(batch.getLibraryId(), importFileId);
+        }
+
+        importFile = importFileMapper.selectById(importFileId);
+        if (importFile != null && "WAITING_STRUCTURING".equals(importFile.getStatus())) {
+            structureFile(batch.getLibraryId(), importFileId);
+        }
+
+        refreshBatchStatus(batch.getId());
+    }
+
+    public void refreshBatchStatus(Long importBatchId) {
+        ImportBatch batch = importBatchMapper.selectById(importBatchId);
+        if (batch == null) {
+            return;
+        }
+
+        List<ImportFile> files = importFileMapper.selectList(new LambdaQueryWrapper<ImportFile>()
+            .eq(ImportFile::getImportBatchId, importBatchId));
+        boolean hasProcessingFile = files.stream().anyMatch(file ->
+            "WAITING_RECOGNITION".equals(file.getStatus())
+                || "RECOGNIZING".equals(file.getStatus())
+                || "WAITING_STRUCTURING".equals(file.getStatus())
+                || "STRUCTURING".equals(file.getStatus())
+        );
+        boolean hasReadyDraft = files.stream().anyMatch(file -> "WAITING_CONFIRMATION".equals(file.getStatus()));
+        boolean hasFailedFile = files.stream().anyMatch(file ->
+            "UPLOAD_FAILED".equals(file.getStatus())
+                || "RECOGNITION_FAILED".equals(file.getStatus())
+                || "STRUCTURING_FAILED".equals(file.getStatus())
+        );
+
+        if (hasProcessingFile) {
+            batch.setStatus("PROCESSING");
+        } else if (hasReadyDraft && hasFailedFile) {
+            batch.setStatus("PARTIAL_SUCCESS");
+        } else if (hasReadyDraft) {
+            batch.setStatus("WAITING_CONFIRMATION");
+        } else if (hasFailedFile) {
+            batch.setStatus("FAILED");
+        }
+        importBatchMapper.updateById(batch);
     }
 
     private ImportFile findOwnedImportFile(Long libraryId, Long importFileId) {

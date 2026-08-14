@@ -4,6 +4,7 @@ import com.wangyue.backend.dto.ImportBatchResponse;
 import com.wangyue.backend.dto.ImportFileResponse;
 import com.wangyue.backend.dto.QuestionDraftResponse;
 import com.wangyue.backend.dto.UpdateQuestionDraftRequest;
+import com.wangyue.backend.service.ImportProcessingQueue;
 import com.wangyue.backend.service.ImportService;
 import java.util.List;
 import org.springframework.http.HttpStatus;
@@ -24,9 +25,11 @@ import org.springframework.web.multipart.MultipartFile;
 public class ImportController {
 
     private final ImportService importService;
+    private final ImportProcessingQueue importProcessingQueue;
 
-    public ImportController(ImportService importService) {
+    public ImportController(ImportService importService, ImportProcessingQueue importProcessingQueue) {
         this.importService = importService;
+        this.importProcessingQueue = importProcessingQueue;
     }
 
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
@@ -35,7 +38,14 @@ public class ImportController {
         @PathVariable Long libraryId,
         @RequestParam("files") List<MultipartFile> files
     ) {
-        return importService.createBatch(libraryId, files);
+        ImportBatchResponse batch = importService.createBatch(libraryId, files);
+        importProcessingQueue.enqueueBatch(batch.getId());
+        return batch;
+    }
+
+    @GetMapping("/latest")
+    public ImportBatchResponse findLatest(@PathVariable Long libraryId) {
+        return importService.findLatestBatch(libraryId);
     }
 
     @GetMapping("/files/{importFileId}/drafts")
