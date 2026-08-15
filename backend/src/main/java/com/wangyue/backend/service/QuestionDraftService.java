@@ -169,6 +169,26 @@ public class QuestionDraftService {
         questionDraftMapper.updateById(draft);
     }
 
+    /**
+     * Discarding is different from confirming: it deletes only temporary AI
+     * data and never creates a formal question.
+     */
+    @Transactional
+    public void discardDraft(Long libraryId, Long importFileId, Long draftId) {
+        QuestionDraft draft = questionDraftMapper.selectById(draftId);
+        if (draft == null || !libraryId.equals(draft.getLibraryId())
+            || !importFileId.equals(draft.getImportFileId())) {
+            throw new IllegalArgumentException("题目草稿不属于当前学习库或导入文件");
+        }
+        if (!"WAITING_CONFIRMATION".equals(draft.getStatus())) {
+            throw new IllegalStateException("当前题目草稿不能再不入库");
+        }
+
+        questionDraftOptionMapper.delete(new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<QuestionDraftOption>()
+            .eq(QuestionDraftOption::getQuestionDraftId, draftId));
+        questionDraftMapper.deleteById(draftId);
+    }
+
     private void validateRecognizedQuestion(RecognizedQuestion question) {
         if (question == null || question.getStem() == null || question.getStem().isBlank()) {
             throw new IllegalArgumentException("识别结果缺少题干");

@@ -1,7 +1,7 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { confirmImportFileDraft, getImportFileDrafts, QuestionDraft } from '../../../../services/importApi';
+import { confirmImportFileDraft, discardImportFileDraft, getImportFileDrafts, QuestionDraft } from '../../../../services/importApi';
 
 const questionTypeText = {
   SINGLE_CHOICE: '单选题',
@@ -14,7 +14,7 @@ export default function QuestionDraftsScreen() {
   const [drafts, setDrafts] = useState<QuestionDraft[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
-  const [confirmingDraftId, setConfirmingDraftId] = useState<number | null>(null);
+  const [actingDraftId, setActingDraftId] = useState<number | null>(null);
 
   useEffect(() => {
     async function loadDrafts() {
@@ -34,7 +34,7 @@ export default function QuestionDraftsScreen() {
   }, [id, importFileId]);
 
   async function confirmDraft(draft: QuestionDraft) {
-    setConfirmingDraftId(draft.id);
+    setActingDraftId(draft.id);
 
     try {
       const confirmedDraft = await confirmImportFileDraft(id, importFileId, draft.id);
@@ -46,7 +46,21 @@ export default function QuestionDraftsScreen() {
       const message = confirmError instanceof Error ? confirmError.message : '确认入库失败，请稍后重试';
       Alert.alert('确认失败', message);
     } finally {
-      setConfirmingDraftId(null);
+      setActingDraftId(null);
+    }
+  }
+
+  async function discardDraft(draft: QuestionDraft) {
+    setActingDraftId(draft.id);
+
+    try {
+      await discardImportFileDraft(id, importFileId, draft.id);
+      setDrafts((currentDrafts) => currentDrafts.filter((item) => item.id !== draft.id));
+    } catch (discardError) {
+      const message = discardError instanceof Error ? discardError.message : '不入库失败，请稍后重试';
+      Alert.alert('不入库失败', message);
+    } finally {
+      setActingDraftId(null);
     }
   }
 
@@ -92,15 +106,23 @@ export default function QuestionDraftsScreen() {
                 <Text style={styles.editButtonText}>编辑草稿</Text>
               </Pressable>
               <Pressable
-                style={[styles.confirmButton, confirmingDraftId === draft.id && styles.confirmButtonDisabled]}
+                style={[styles.confirmButton, actingDraftId === draft.id && styles.confirmButtonDisabled]}
                 onPress={() => void confirmDraft(draft)}
-                disabled={confirmingDraftId === draft.id}
+                disabled={actingDraftId === draft.id}
               >
                 <Text style={styles.confirmButtonText}>
-                  {confirmingDraftId === draft.id ? '正在入库…' : '确认入库'}
+                  {actingDraftId === draft.id ? '正在处理…' : '确认入库'}
                 </Text>
               </Pressable>
             </View>
+          )}
+          {draft.status !== 'CONFIRMED' && (
+            <Pressable
+              disabled={actingDraftId === draft.id}
+              style={styles.discardButton}
+              onPress={() => void discardDraft(draft)}>
+              <Text style={styles.discardButtonText}>不入库</Text>
+            </Pressable>
           )}
         </View>
       ))}
@@ -129,5 +151,7 @@ const styles = StyleSheet.create({
   confirmButton: { alignItems: 'center', backgroundColor: '#2563EB', borderRadius: 8, flex: 1, paddingVertical: 10 },
   confirmButtonDisabled: { backgroundColor: '#93C5FD' },
   confirmButtonText: { color: '#FFFFFF', fontSize: 14, fontWeight: '700' },
+  discardButton: { alignItems: 'center', marginTop: 14, paddingVertical: 4 },
+  discardButtonText: { color: '#B91C1C', fontSize: 14, fontWeight: '700' },
   confirmedText: { color: '#15803D', fontSize: 15, fontWeight: '700', marginTop: 20 },
 });

@@ -10,6 +10,7 @@ import java.util.List;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -76,6 +77,16 @@ public class ImportController {
         @RequestBody UpdateQuestionDraftRequest request
     ) {
         return importService.updateDraft(libraryId, importFileId, draftId, request);
+    }
+
+    @DeleteMapping("/files/{importFileId}/drafts/{draftId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void discardDraft(
+        @PathVariable Long libraryId,
+        @PathVariable Long importFileId,
+        @PathVariable Long draftId
+    ) {
+        importService.discardDraft(libraryId, importFileId, draftId);
     }
 
     @PostMapping("/files/{importFileId}/drafts/{draftId}/confirm")

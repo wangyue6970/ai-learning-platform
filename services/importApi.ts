@@ -12,6 +12,7 @@ export type ImportFileResult = {
     | 'STRUCTURING'
     | 'WAITING_CONFIRMATION'
     | 'CONFIRMED'
+    | 'DISCARDED'
     | 'RECOGNITION_FAILED'
     | 'STRUCTURING_FAILED'
     | 'UPLOAD_FAILED';
@@ -208,6 +209,34 @@ export async function updateImportFileDraft(
   }
 
   return response.json();
+}
+
+export async function discardImportFileDraft(
+  libraryId: string,
+  importFileId: string,
+  draftId: number
+): Promise<void> {
+  let response: Response;
+
+  try {
+    response = await fetch(
+      `${API_BASE_URL}/api/libraries/${libraryId}/import-batches/files/${importFileId}/drafts/${draftId}`,
+      { method: 'DELETE' }
+    );
+  } catch {
+    throw new Error('无法连接草稿服务，请检查电脑后端是否正在运行');
+  }
+
+  if (!response.ok) {
+    let message = '不入库失败，请稍后重试';
+    try {
+      const errorBody: { message?: string } = await response.json();
+      message = errorBody.message || message;
+    } catch {
+      // Keep the default error message when the server does not return JSON.
+    }
+    throw new Error(message);
+  }
 }
 
 export async function confirmImportFileDraft(

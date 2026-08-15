@@ -214,7 +214,7 @@ public class ImportService {
     public QuestionDraftResponse confirmDraft(Long libraryId, Long importFileId, Long draftId) {
         ImportFile importFile = findOwnedImportFile(libraryId, importFileId);
         questionDraftService.confirmDraft(libraryId, importFileId, draftId);
-        cleanUpSourceFileWhenAllDraftsConfirmed(importFile);
+        cleanUpSourceFileWhenNoDraftNeedsDecision(importFile);
 
         QuestionDraft draft = questionDraftMapper.selectById(draftId);
         if (draft == null) {
@@ -223,20 +223,29 @@ public class ImportService {
         return toDraftResponse(draft);
     }
 
+    public void discardDraft(Long libraryId, Long importFileId, Long draftId) {
+        ImportFile importFile = findOwnedImportFile(libraryId, importFileId);
+        questionDraftService.discardDraft(libraryId, importFileId, draftId);
+        cleanUpSourceFileWhenNoDraftNeedsDecision(importFile);
+    }
+
     /**
      * One source image can produce several drafts. It must remain available
      * until the last draft from that image has been confirmed, then the
      * temporary source file is removed for privacy.
      */
-    private void cleanUpSourceFileWhenAllDraftsConfirmed(ImportFile importFile) {
-        boolean hasUnconfirmedDraft = questionDraftMapper.selectCount(new LambdaQueryWrapper<QuestionDraft>()
+    private void cleanUpSourceFileWhenNoDraftNeedsDecision(ImportFile importFile) {
+        boolean hasDraftWaitingForDecision = questionDraftMapper.selectCount(new LambdaQueryWrapper<QuestionDraft>()
             .eq(QuestionDraft::getImportFileId, importFile.getId())
-            .ne(QuestionDraft::getStatus, "CONFIRMED")) > 0;
-        if (hasUnconfirmedDraft) {
+            .eq(QuestionDraft::getStatus, "WAITING_CONFIRMATION")) > 0;
+        if (hasDraftWaitingForDecision) {
             return;
         }
 
-        importFile.setStatus("CONFIRMED");
+        boolean hasConfirmedDraft = questionDraftMapper.selectCount(new LambdaQueryWrapper<QuestionDraft>()
+            .eq(QuestionDraft::getImportFileId, importFile.getId())
+            .eq(QuestionDraft::getStatus, "CONFIRMED")) > 0;
+        importFile.setStatus(hasConfirmedDraft ? "CONFIRMED" : "DISCARDED");
         try {
             importStorageService.deleteStoredFile(importFile.getStoredFilePath());
             importFile.setStoredFilePath(null);
@@ -244,7 +253,9 @@ public class ImportService {
         } catch (RuntimeException exception) {
             // The formal question has already been saved. Do not falsely tell
             // the user that confirmation failed just because cleanup failed.
-            importFile.setErrorMessage("题目已入库，但临时原文件清理失败");
+            importFile.setErrorMessage(hasConfirmedDraft
+                ? "题目已入库，但临时原文件清理失败"
+                : "草稿已不入库，但临时原文件清理失败");
         }
         importFileMapper.updateById(importFile);
     }

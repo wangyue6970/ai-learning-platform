@@ -36,6 +36,10 @@ function getImportStatusText(file: ImportFileResult) {
       return file.errorMessage
         ? `题目已确认入库；${file.errorMessage}`
         : '题目已确认入库，临时原文件已删除';
+    case 'DISCARDED':
+      return file.errorMessage
+        ? `草稿已不入库；${file.errorMessage}`
+        : '草稿已不入库，临时原文件已删除';
     case 'RECOGNITION_FAILED':
       return `识别失败：${file.errorMessage || '请稍后重试'}`;
     case 'STRUCTURING_FAILED':
@@ -49,10 +53,11 @@ function getBatchSummary(files: ImportFileResult[]) {
   const processingCount = files.filter(isProcessingFile).length;
   const readyCount = files.filter((file) => file.status === 'WAITING_CONFIRMATION').length;
   const confirmedCount = files.filter((file) => file.status === 'CONFIRMED').length;
+  const discardedCount = files.filter((file) => file.status === 'DISCARDED').length;
   const failedCount = files.filter((file) =>
     ['RECOGNITION_FAILED', 'STRUCTURING_FAILED', 'UPLOAD_FAILED'].includes(file.status)
   ).length;
-  return `共 ${files.length} 个文件：处理中 ${processingCount}，待确认 ${readyCount}，已确认 ${confirmedCount}，失败 ${failedCount}`;
+  return `共 ${files.length} 个文件：处理中 ${processingCount}，待确认 ${readyCount}，已确认 ${confirmedCount}，不入库 ${discardedCount}，失败 ${failedCount}`;
 }
 
 export default function ImportQuestionsScreen() {
@@ -237,7 +242,7 @@ export default function ImportQuestionsScreen() {
         <View>
           <Text style={styles.progressText}>{getBatchSummary(latestBatch.files)}</Text>
           {latestBatch.files.some((file) =>
-            ['WAITING_CONFIRMATION', 'CONFIRMED'].includes(file.status)
+            ['WAITING_CONFIRMATION', 'CONFIRMED', 'DISCARDED'].includes(file.status)
           ) && (
             <Pressable
               style={styles.batchDraftButton}
