@@ -10,6 +10,7 @@ public class LearningLibrary {
 
     @TableId(type = IdType.AUTO)
     private Long id;
+    private Long ownerId;
     private String name;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
@@ -22,6 +23,10 @@ public class LearningLibrary {
         return name;
     }
 
+    public Long getOwnerId() {
+        return ownerId;
+    }
+
     public LocalDateTime getCreatedAt() {
         return createdAt;
     }
@@ -32,6 +37,10 @@ public class LearningLibrary {
 
     public void setId(Long id) {
         this.id = id;
+    }
+
+    public void setOwnerId(Long ownerId) {
+        this.ownerId = ownerId;
     }
 
     public void setName(String name) {

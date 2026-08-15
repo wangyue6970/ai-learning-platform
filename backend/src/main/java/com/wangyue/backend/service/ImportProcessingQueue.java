@@ -8,6 +8,7 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 /**
@@ -27,12 +28,19 @@ public class ImportProcessingQueue {
     });
     private final Set<Long> queuedFileIds = ConcurrentHashMap.newKeySet();
 
+    @Value("${app.import.processing.enabled:true}")
+    private boolean backgroundProcessingEnabled;
+
     public ImportProcessingQueue(ImportFileMapper importFileMapper, ImportService importService) {
         this.importFileMapper = importFileMapper;
         this.importService = importService;
     }
 
     public void enqueueBatch(Long importBatchId) {
+        if (!backgroundProcessingEnabled) {
+            return;
+        }
+
         importFileMapper.selectList(new LambdaQueryWrapper<ImportFile>()
             .eq(ImportFile::getImportBatchId, importBatchId)
             .in(ImportFile::getStatus, "WAITING_RECOGNITION", "WAITING_STRUCTURING")

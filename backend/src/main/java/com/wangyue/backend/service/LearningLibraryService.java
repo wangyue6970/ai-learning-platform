@@ -1,6 +1,9 @@
 package com.wangyue.backend.service;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.wangyue.backend.entity.AppUser;
 import com.wangyue.backend.entity.LearningLibrary;
+import com.wangyue.backend.mapper.AppUserMapper;
 import com.wangyue.backend.mapper.LearningLibraryMapper;
 import java.util.List;
 import org.springframework.stereotype.Service;
@@ -8,9 +11,16 @@ import org.springframework.stereotype.Service;
 @Service
 public class LearningLibraryService {
 
+    private static final String LOCAL_DEMO_USERNAME = "demo-user";
+
+    private final AppUserMapper appUserMapper;
     private final LearningLibraryMapper learningLibraryMapper;
 
-    public LearningLibraryService(LearningLibraryMapper learningLibraryMapper) {
+    public LearningLibraryService(
+        AppUserMapper appUserMapper,
+        LearningLibraryMapper learningLibraryMapper
+    ) {
+        this.appUserMapper = appUserMapper;
         this.learningLibraryMapper = learningLibraryMapper;
     }
 
@@ -24,8 +34,22 @@ public class LearningLibraryService {
         validateName(name);
         LearningLibrary library = new LearningLibrary();
         library.setName(name);
+        library.setOwnerId(findLocalDemoUserId());
         learningLibraryMapper.insert(library);
         return library;
+    }
+
+    private Long findLocalDemoUserId() {
+        AppUser demoUser = appUserMapper.selectOne(
+            new LambdaQueryWrapper<AppUser>()
+                .eq(AppUser::getUsername, LOCAL_DEMO_USERNAME)
+        );
+
+        if (demoUser == null) {
+            throw new IllegalStateException("本地演示账号不存在，无法创建学习库");
+        }
+
+        return demoUser.getId();
     }
 
     public List<LearningLibrary> findAll() {

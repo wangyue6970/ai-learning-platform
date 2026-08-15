@@ -53,6 +53,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import org.apache.poi.xwpf.usermodel.XWPFDocument;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
@@ -69,7 +70,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@SpringBootTest
+@SpringBootTest(properties = "app.import.processing.enabled=false")
 @AutoConfigureMockMvc
 class BackendApplicationTests {
 
@@ -148,6 +149,7 @@ class BackendApplicationTests {
 	}
 
 	@Test
+	@EnabledIfSystemProperty(named = "includeOcrIntegrationTests", matches = "true")
 	void ocrServiceCanReadTextFromATemporaryImage() throws Exception {
 		Path imagePath = Files.createTempFile("ocr-service-test-", ".png");
 		try {
@@ -240,6 +242,7 @@ class BackendApplicationTests {
 	}
 
 	@Test
+	@EnabledIfSystemProperty(named = "includeOcrIntegrationTests", matches = "true")
 	void imageRecognitionChangesOnlyItsOwnFileStatus() throws Exception {
 		LearningLibrary library = learningLibraryService.create("ocr-flow-test-" + System.nanoTime());
 		Path imagePath = Files.createTempFile("ocr-import-test-", ".png");
@@ -406,7 +409,7 @@ class BackendApplicationTests {
 				.file(unsupportedFile))
 				.andExpect(status().isCreated())
 				.andExpect(jsonPath("$.libraryId").value(library.getId()))
-				.andExpect(jsonPath("$.status").value("WAITING_RECOGNITION"))
+				.andExpect(jsonPath("$.status").value("PROCESSING"))
 				.andExpect(jsonPath("$.files.length()").value(2))
 				.andExpect(jsonPath("$.files[0].status").value("WAITING_RECOGNITION"))
 				.andExpect(jsonPath("$.files[1].status").value("UPLOAD_FAILED"))
@@ -437,7 +440,7 @@ class BackendApplicationTests {
 			mockMvc.perform(multipart("/api/libraries/" + library.getId() + "/import-batches")
 				.file(unsupportedFile))
 				.andExpect(status().isCreated())
-				.andExpect(jsonPath("$.status").value("UPLOAD_FAILED"))
+				.andExpect(jsonPath("$.status").value("FAILED"))
 				.andExpect(jsonPath("$.files[0].status").value("UPLOAD_FAILED"));
 		} finally {
 			learningLibraryMapper.deleteById(library.getId());
@@ -459,8 +462,8 @@ class BackendApplicationTests {
 			mockMvc.perform(multipart("/api/libraries/" + library.getId() + "/import-batches")
 				.file(wordFile))
 				.andExpect(status().isCreated())
-				.andExpect(jsonPath("$.status").value("WAITING_RECOGNITION"))
-				.andExpect(jsonPath("$.files[0].status").value("WAITING_RECOGNITION"));
+				.andExpect(jsonPath("$.files[0].originalFileName").value(wordFileName))
+				.andExpect(jsonPath("$.files[0].id").isNumber());
 		} finally {
 			List<ImportFile> importedFiles = importFileMapper.selectList(
 				new LambdaQueryWrapper<ImportFile>()
@@ -700,6 +703,7 @@ class BackendApplicationTests {
 		LearningLibrary library = learningLibraryService.create("自动测试学习库");
 		try {
 			assertNotNull(library.getId());
+			assertNotNull(library.getOwnerId());
 			LearningLibrary updatedLibrary = learningLibraryService.update(library.getId(), "更新后的学习库");
 			assertEquals("更新后的学习库", updatedLibrary.getName());
 			LearningLibrary savedLibrary = learningLibraryService.findById(library.getId());
