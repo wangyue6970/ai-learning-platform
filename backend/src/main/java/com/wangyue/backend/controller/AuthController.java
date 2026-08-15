@@ -1,5 +1,7 @@
 package com.wangyue.backend.controller;
 
+import com.wangyue.backend.dto.LoginRequest;
+import com.wangyue.backend.dto.LoginResponse;
 import com.wangyue.backend.dto.RegisterRequest;
 import com.wangyue.backend.dto.RegisterResponse;
 import com.wangyue.backend.entity.AppUser;
@@ -30,5 +32,10 @@ public class AuthController {
         response.setId(user.getId());
         response.setUsername(user.getUsername());
         return response;
+    }
+
+    @PostMapping("/login")
+    public LoginResponse login(@RequestBody LoginRequest request) {
+        return authService.login(request);
     }
 }

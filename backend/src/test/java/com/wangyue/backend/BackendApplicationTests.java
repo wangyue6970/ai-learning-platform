@@ -393,6 +393,65 @@ class BackendApplicationTests {
 	}
 
 	@Test
+	void loginApiReturnsAccessTokenWithoutExposingPasswordData() throws Exception {
+		String username = "login-api-" + System.nanoTime();
+		String password = "demo-password-123";
+		RegisterRequest registerRequest = new RegisterRequest();
+		registerRequest.setUsername(username);
+		registerRequest.setPassword(password);
+		AppUser user = authService.register(registerRequest);
+
+		try {
+			mockMvc.perform(post("/api/auth/login")
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("{\"username\":\"" + username + "\",\"password\":\"" + password + "\"}"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.accessToken").isNotEmpty())
+				.andExpect(jsonPath("$.tokenType").value("Bearer"))
+				.andExpect(jsonPath("$.expiresInSeconds").value(7200))
+				.andExpect(jsonPath("$.username").value(username))
+				.andExpect(jsonPath("$.password").doesNotExist())
+				.andExpect(jsonPath("$.passwordHash").doesNotExist());
+		} finally {
+			appUserMapper.deleteById(user.getId());
+		}
+	}
+
+	@Test
+	void loginApiUsesOneGenericMessageForUnknownUserAndWrongPassword() throws Exception {
+		String username = "login-failure-" + System.nanoTime();
+		RegisterRequest registerRequest = new RegisterRequest();
+		registerRequest.setUsername(username);
+		registerRequest.setPassword("demo-password-123");
+		AppUser user = authService.register(registerRequest);
+
+		try {
+			mockMvc.perform(post("/api/auth/login")
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("{\"username\":\"missing-user\",\"password\":\"demo-password-123\"}"))
+				.andExpect(status().isUnauthorized())
+				.andExpect(jsonPath("$.message").value("用户名或密码错误"));
+
+			mockMvc.perform(post("/api/auth/login")
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("{\"username\":\"" + username + "\",\"password\":\"wrong-password\"}"))
+				.andExpect(status().isUnauthorized())
+				.andExpect(jsonPath("$.message").value("用户名或密码错误"));
+		} finally {
+			appUserMapper.deleteById(user.getId());
+		}
+	}
+
+	@Test
+	void loginApiRejectsMissingCredentialsAsBadRequest() throws Exception {
+		mockMvc.perform(post("/api/auth/login")
+			.contentType(MediaType.APPLICATION_JSON)
+			.content("{\"username\":\"\",\"password\":\"\"}"))
+			.andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.message").value("用户名和密码不能为空"));
+	}
+
+	@Test
 	void importApiKeepsOtherFilesWhenOneFileFails() throws Exception {
 		LearningLibrary library = learningLibraryService.create("import-api-test-" + System.nanoTime());
 		String imageFileName = "question-" + System.nanoTime() + ".png";

@@ -1,8 +1,11 @@
 package com.wangyue.backend.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.wangyue.backend.dto.LoginRequest;
+import com.wangyue.backend.dto.LoginResponse;
 import com.wangyue.backend.dto.RegisterRequest;
 import com.wangyue.backend.entity.AppUser;
+import com.wangyue.backend.exception.AuthenticationException;
 import com.wangyue.backend.mapper.AppUserMapper;
 import java.nio.charset.StandardCharsets;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -13,10 +16,16 @@ public class AuthService {
 
     private final AppUserMapper appUserMapper;
     private final PasswordEncoder passwordEncoder;
+    private final JwtTokenService jwtTokenService;
 
-    public AuthService(AppUserMapper appUserMapper, PasswordEncoder passwordEncoder) {
+    public AuthService(
+        AppUserMapper appUserMapper,
+        PasswordEncoder passwordEncoder,
+        JwtTokenService jwtTokenService
+    ) {
         this.appUserMapper = appUserMapper;
         this.passwordEncoder = passwordEncoder;
+        this.jwtTokenService = jwtTokenService;
     }
 
     public AppUser register(RegisterRequest request) {
@@ -38,6 +47,29 @@ public class AuthService {
         return appUserMapper.selectOne(
             new LambdaQueryWrapper<AppUser>().eq(AppUser::getUsername, username)
         );
+    }
+
+    public LoginResponse login(LoginRequest request) {
+        validateLoginRequest(request);
+
+        AppUser user = findByUsername(request.getUsername().trim());
+        if (user == null || !passwordEncoder.matches(request.getPassword(), user.getPasswordHash())) {
+            throw new AuthenticationException();
+        }
+
+        LoginResponse response = new LoginResponse();
+        response.setAccessToken(jwtTokenService.createAccessToken(user.getId()));
+        response.setTokenType("Bearer");
+        response.setExpiresInSeconds(jwtTokenService.getAccessTokenExpiresInSeconds());
+        response.setUsername(user.getUsername());
+        return response;
+    }
+
+    private void validateLoginRequest(LoginRequest request) {
+        if (request == null || request.getUsername() == null || request.getUsername().isBlank()
+            || request.getPassword() == null || request.getPassword().isBlank()) {
+            throw new IllegalArgumentException("用户名和密码不能为空");
+        }
     }
 
     private void validateRegisterRequest(RegisterRequest request) {
