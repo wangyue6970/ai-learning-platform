@@ -26,6 +26,7 @@ public class PracticeService {
     private final AnswerRecordMapper answerRecordMapper;
     private final WrongQuestionMapper wrongQuestionMapper;
     private final QuestionService questionService;
+    private final LearningLibraryService learningLibraryService;
     private final ObjectMapper objectMapper;
 
     public PracticeService(
@@ -33,12 +34,14 @@ public class PracticeService {
         AnswerRecordMapper answerRecordMapper,
         WrongQuestionMapper wrongQuestionMapper,
         QuestionService questionService,
+        LearningLibraryService learningLibraryService,
         ObjectMapper objectMapper
     ) {
         this.questionMapper = questionMapper;
         this.answerRecordMapper = answerRecordMapper;
         this.wrongQuestionMapper = wrongQuestionMapper;
         this.questionService = questionService;
+        this.learningLibraryService = learningLibraryService;
         this.objectMapper = objectMapper;
     }
 
@@ -70,11 +73,13 @@ public class PracticeService {
         }
     }
 
-    private Question validateAndFindQuestion(SubmitAnswerRequest request) {
+    private Question validateAndFindQuestion(SubmitAnswerRequest request, Long currentUserId) {
         if (request == null || request.getLibraryId() == null || request.getQuestionId() == null
             || request.getSelectedAnswer() == null || request.getSelectedAnswer().isEmpty()) {
             throw new IllegalArgumentException("学习库、题目和作答内容不能为空");
         }
+
+        learningLibraryService.findOwnedById(request.getLibraryId(), currentUserId);
 
         Question question = questionMapper.selectById(request.getQuestionId());
         if (question == null || !question.getLibraryId().equals(request.getLibraryId())) {
@@ -137,8 +142,8 @@ public class PracticeService {
     }
 
     @Transactional
-    public SubmitAnswerResponse submitAnswer(SubmitAnswerRequest request) {
-        Question question = validateAndFindQuestion(request);
+    public SubmitAnswerResponse submitAnswer(SubmitAnswerRequest request, Long currentUserId) {
+        Question question = validateAndFindQuestion(request, currentUserId);
         List<String> correctAnswers = readAnswers(question.getCorrectAnswer());
         boolean correct = answersMatch(request.getSelectedAnswer(), correctAnswers);
 
@@ -152,7 +157,10 @@ public class PracticeService {
         return response;
     }
 
-    public List<PracticeQuestionResponse> findWrongQuestionsByLibraryId(Long libraryId) {
+    public List<PracticeQuestionResponse> findWrongQuestionsByLibraryId(
+        Long libraryId, Long currentUserId
+    ) {
+        learningLibraryService.findOwnedById(libraryId, currentUserId);
         List<WrongQuestion> wrongQuestions = wrongQuestionMapper.selectList(
             new LambdaQueryWrapper<WrongQuestion>()
                 .eq(WrongQuestion::getLibraryId, libraryId)
@@ -161,7 +169,7 @@ public class PracticeService {
         for (WrongQuestion wrongQuestion : wrongQuestions) {
             wrongQuestionIds.add(wrongQuestion.getQuestionId());
         }
-        return questionService.findPracticeByLibraryId(libraryId).stream()
+        return questionService.findPracticeByLibraryId(libraryId, currentUserId).stream()
             .filter(question -> wrongQuestionIds.contains(question.getId()))
             .toList();
     }

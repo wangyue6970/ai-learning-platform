@@ -4,6 +4,7 @@ import com.wangyue.backend.dto.SubmitAnswerRequest;
 import com.wangyue.backend.dto.SubmitAnswerResponse;
 import com.wangyue.backend.dto.PracticeQuestionResponse;
 import java.util.List;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import com.wangyue.backend.service.PracticeService;
@@ -23,12 +24,18 @@ public class PracticeController {
     }
 
     @PostMapping("/answers")
-    public SubmitAnswerResponse submitAnswer(@RequestBody SubmitAnswerRequest request) {
-        return practiceService.submitAnswer(request);
+    public SubmitAnswerResponse submitAnswer(
+        @RequestBody SubmitAnswerRequest request,
+        @AuthenticationPrincipal Long currentUserId
+    ) {
+        return practiceService.submitAnswer(request, currentUserId);
     }
 
     @GetMapping("/wrong-questions/library/{libraryId}")
-    public List<PracticeQuestionResponse> findWrongQuestions(@PathVariable Long libraryId) {
-        return practiceService.findWrongQuestionsByLibraryId(libraryId);
+    public List<PracticeQuestionResponse> findWrongQuestions(
+        @PathVariable Long libraryId,
+        @AuthenticationPrincipal Long currentUserId
+    ) {
+        return practiceService.findWrongQuestionsByLibraryId(libraryId, currentUserId);
     }
 }

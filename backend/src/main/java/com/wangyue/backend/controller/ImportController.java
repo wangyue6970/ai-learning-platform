@@ -9,6 +9,7 @@ import com.wangyue.backend.service.ImportService;
 import java.util.List;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -37,16 +38,20 @@ public class ImportController {
     @ResponseStatus(HttpStatus.CREATED)
     public ImportBatchResponse create(
         @PathVariable Long libraryId,
-        @RequestParam("files") List<MultipartFile> files
+        @RequestParam("files") List<MultipartFile> files,
+        @AuthenticationPrincipal Long currentUserId
     ) {
-        ImportBatchResponse batch = importService.createBatch(libraryId, files);
+        ImportBatchResponse batch = importService.createBatch(libraryId, files, currentUserId);
         importProcessingQueue.enqueueBatch(batch.getId());
         return batch;
     }
 
     @GetMapping("/latest")
-    public ImportBatchResponse findLatest(@PathVariable Long libraryId) {
-        return importService.findLatestBatch(libraryId);
+    public ImportBatchResponse findLatest(
+        @PathVariable Long libraryId,
+        @AuthenticationPrincipal Long currentUserId
+    ) {
+        return importService.findLatestBatch(libraryId, currentUserId);
     }
 
     /**
@@ -56,17 +61,19 @@ public class ImportController {
     @GetMapping("/{importBatchId}/drafts")
     public List<QuestionDraftResponse> findBatchDrafts(
         @PathVariable Long libraryId,
-        @PathVariable Long importBatchId
+        @PathVariable Long importBatchId,
+        @AuthenticationPrincipal Long currentUserId
     ) {
-        return importService.findBatchDrafts(libraryId, importBatchId);
+        return importService.findBatchDrafts(libraryId, importBatchId, currentUserId);
     }
 
     @GetMapping("/files/{importFileId}/drafts")
     public List<QuestionDraftResponse> findDrafts(
         @PathVariable Long libraryId,
-        @PathVariable Long importFileId
+        @PathVariable Long importFileId,
+        @AuthenticationPrincipal Long currentUserId
     ) {
-        return importService.findDrafts(libraryId, importFileId);
+        return importService.findDrafts(libraryId, importFileId, currentUserId);
     }
 
     @PatchMapping("/files/{importFileId}/drafts/{draftId}")
@@ -74,9 +81,10 @@ public class ImportController {
         @PathVariable Long libraryId,
         @PathVariable Long importFileId,
         @PathVariable Long draftId,
-        @RequestBody UpdateQuestionDraftRequest request
+        @RequestBody UpdateQuestionDraftRequest request,
+        @AuthenticationPrincipal Long currentUserId
     ) {
-        return importService.updateDraft(libraryId, importFileId, draftId, request);
+        return importService.updateDraft(libraryId, importFileId, draftId, request, currentUserId);
     }
 
     @DeleteMapping("/files/{importFileId}/drafts/{draftId}")
@@ -84,33 +92,37 @@ public class ImportController {
     public void discardDraft(
         @PathVariable Long libraryId,
         @PathVariable Long importFileId,
-        @PathVariable Long draftId
+        @PathVariable Long draftId,
+        @AuthenticationPrincipal Long currentUserId
     ) {
-        importService.discardDraft(libraryId, importFileId, draftId);
+        importService.discardDraft(libraryId, importFileId, draftId, currentUserId);
     }
 
     @PostMapping("/files/{importFileId}/drafts/{draftId}/confirm")
     public QuestionDraftResponse confirmDraft(
         @PathVariable Long libraryId,
         @PathVariable Long importFileId,
-        @PathVariable Long draftId
+        @PathVariable Long draftId,
+        @AuthenticationPrincipal Long currentUserId
     ) {
-        return importService.confirmDraft(libraryId, importFileId, draftId);
+        return importService.confirmDraft(libraryId, importFileId, draftId, currentUserId);
     }
 
     @PostMapping("/files/{importFileId}/recognize")
     public ImportFileResponse recognize(
         @PathVariable Long libraryId,
-        @PathVariable Long importFileId
+        @PathVariable Long importFileId,
+        @AuthenticationPrincipal Long currentUserId
     ) {
-        return importService.recognizeFile(libraryId, importFileId);
+        return importService.recognizeFile(libraryId, importFileId, currentUserId);
     }
 
     @PostMapping("/files/{importFileId}/structure")
     public ImportFileResponse structure(
         @PathVariable Long libraryId,
-        @PathVariable Long importFileId
+        @PathVariable Long importFileId,
+        @AuthenticationPrincipal Long currentUserId
     ) {
-        return importService.structureFile(libraryId, importFileId);
+        return importService.structureFile(libraryId, importFileId, currentUserId);
     }
 }

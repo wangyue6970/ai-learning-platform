@@ -956,6 +956,98 @@ class BackendApplicationTests {
 	}
 
 	@Test
+	void importEndpointsAreScopedToTheirAuthenticatedOwner() throws Exception {
+		LearningLibrary ownLibrary = createLibraryForRequestUser("import-own-library-" + System.nanoTime());
+		AppUser otherUser = new AppUser();
+		otherUser.setUsername("import-other-owner-" + System.nanoTime());
+		otherUser.setPasswordHash(passwordEncoder.encode("demo-password-123"));
+		appUserMapper.insert(otherUser);
+		LearningLibrary otherLibrary = learningLibraryService.create(
+			"import-other-library-" + System.nanoTime(), otherUser.getId()
+		);
+		ImportBatch otherBatch = new ImportBatch();
+		otherBatch.setLibraryId(otherLibrary.getId());
+		otherBatch.setStatus("WAITING_CONFIRMATION");
+		importBatchMapper.insert(otherBatch);
+		ImportFile otherFile = new ImportFile();
+		otherFile.setImportBatchId(otherBatch.getId());
+		otherFile.setOriginalFileName("private-question.png");
+		otherFile.setStoredFilePath("C:\\private\\private-question.png");
+		otherFile.setFileType("image/png");
+		otherFile.setFileSizeBytes(1L);
+		otherFile.setStatus("WAITING_CONFIRMATION");
+		otherFile.setRecognitionText("private question text");
+		importFileMapper.insert(otherFile);
+		QuestionDraft otherDraft = new QuestionDraft();
+		otherDraft.setLibraryId(otherLibrary.getId());
+		otherDraft.setImportFileId(otherFile.getId());
+		otherDraft.setSortOrder(1);
+		otherDraft.setStatus("WAITING_CONFIRMATION");
+		otherDraft.setQuestionType("SINGLE_CHOICE");
+		otherDraft.setStem("private draft");
+		otherDraft.setCorrectAnswer("[\"A\"]");
+		questionDraftMapper.insert(otherDraft);
+
+		try {
+			MockMultipartFile upload = new MockMultipartFile(
+				"files", "attempted-upload.png", "image/png", "image bytes".getBytes()
+			);
+			String basePath = "/api/libraries/" + otherLibrary.getId() + "/import-batches";
+
+			mockMvc.perform(multipart(basePath).file(upload).with(authenticatedRequest()))
+				.andExpect(status().isForbidden())
+				.andExpect(jsonPath("$.message").value("无权访问该学习库"));
+
+			mockMvc.perform(get(basePath + "/latest").with(authenticatedRequest()))
+				.andExpect(status().isForbidden())
+				.andExpect(jsonPath("$.message").value("无权访问该学习库"));
+
+			mockMvc.perform(get(basePath + "/" + otherBatch.getId() + "/drafts")
+				.with(authenticatedRequest()))
+				.andExpect(status().isForbidden())
+				.andExpect(jsonPath("$.message").value("无权访问该学习库"));
+
+			String draftPath = basePath + "/files/" + otherFile.getId() + "/drafts/" + otherDraft.getId();
+			mockMvc.perform(get(basePath + "/files/" + otherFile.getId() + "/drafts")
+				.with(authenticatedRequest()))
+				.andExpect(status().isForbidden())
+				.andExpect(jsonPath("$.message").value("无权访问该学习库"));
+
+			mockMvc.perform(patch(draftPath).contentType(MediaType.APPLICATION_JSON)
+				.content("{}").with(authenticatedRequest()))
+				.andExpect(status().isForbidden())
+				.andExpect(jsonPath("$.message").value("无权访问该学习库"));
+
+			mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete(draftPath)
+				.with(authenticatedRequest()))
+				.andExpect(status().isForbidden())
+				.andExpect(jsonPath("$.message").value("无权访问该学习库"));
+
+			mockMvc.perform(post(draftPath + "/confirm").with(authenticatedRequest()))
+				.andExpect(status().isForbidden())
+				.andExpect(jsonPath("$.message").value("无权访问该学习库"));
+
+			String filePath = basePath + "/files/" + otherFile.getId();
+			mockMvc.perform(post(filePath + "/recognize").with(authenticatedRequest()))
+				.andExpect(status().isForbidden())
+				.andExpect(jsonPath("$.message").value("无权访问该学习库"));
+
+			mockMvc.perform(post(filePath + "/structure").with(authenticatedRequest()))
+				.andExpect(status().isForbidden())
+				.andExpect(jsonPath("$.message").value("无权访问该学习库"));
+
+			assertEquals("WAITING_CONFIRMATION", importFileMapper.selectById(otherFile.getId()).getStatus());
+			assertNotNull(questionDraftMapper.selectById(otherDraft.getId()));
+			assertEquals(0, questionMapper.selectCount(new LambdaQueryWrapper<Question>()
+				.eq(Question::getLibraryId, otherLibrary.getId())));
+		} finally {
+			learningLibraryMapper.deleteById(ownLibrary.getId());
+			learningLibraryMapper.deleteById(otherLibrary.getId());
+			appUserMapper.deleteById(otherUser.getId());
+		}
+	}
+
+	@Test
 	void questionEndpointsAreScopedToTheirAuthenticatedOwner() throws Exception {
 		LearningLibrary ownLibrary = createLibraryForRequestUser("question-own-library-" + System.nanoTime());
 		AppUser otherUser = new AppUser();
@@ -1070,6 +1162,54 @@ class BackendApplicationTests {
 	}
 
 	@Test
+	void practiceEndpointsAreScopedToTheirAuthenticatedOwner() throws Exception {
+		LearningLibrary ownLibrary = createLibraryForRequestUser("practice-own-library-" + System.nanoTime());
+		AppUser otherUser = new AppUser();
+		otherUser.setUsername("practice-other-owner-" + System.nanoTime());
+		otherUser.setPasswordHash(passwordEncoder.encode("demo-password-123"));
+		appUserMapper.insert(otherUser);
+		LearningLibrary otherLibrary = learningLibraryService.create(
+			"practice-other-library-" + System.nanoTime(), otherUser.getId()
+		);
+		Question otherQuestion = new Question();
+		otherQuestion.setLibraryId(otherLibrary.getId());
+		otherQuestion.setQuestionType("SINGLE_CHOICE");
+		otherQuestion.setStem("private practice question");
+		otherQuestion.setCorrectAnswer("[\"A\"]");
+		questionMapper.insert(otherQuestion);
+
+		try {
+			mockMvc.perform(post("/api/practice/answers")
+				.contentType(MediaType.APPLICATION_JSON)
+				.content(submitAnswerJson(otherLibrary.getId(), otherQuestion.getId(), "A"))
+				.with(authenticatedRequest()))
+				.andExpect(status().isForbidden())
+				.andExpect(jsonPath("$.message").value("无权访问该学习库"));
+
+			mockMvc.perform(get("/api/practice/wrong-questions/library/" + otherLibrary.getId())
+				.with(authenticatedRequest()))
+				.andExpect(status().isForbidden())
+				.andExpect(jsonPath("$.message").value("无权访问该学习库"));
+
+			mockMvc.perform(post("/api/practice/answers")
+				.contentType(MediaType.APPLICATION_JSON)
+				.content(submitAnswerJson(ownLibrary.getId(), otherQuestion.getId(), "A"))
+				.with(authenticatedRequest()))
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.message").value("题目不存在或不属于该学习库"));
+
+			assertEquals(0, answerRecordMapper.selectCount(new LambdaQueryWrapper<AnswerRecord>()
+				.eq(AnswerRecord::getQuestionId, otherQuestion.getId())));
+			assertEquals(0, wrongQuestionMapper.selectCount(new LambdaQueryWrapper<WrongQuestion>()
+				.eq(WrongQuestion::getQuestionId, otherQuestion.getId())));
+		} finally {
+			learningLibraryMapper.deleteById(ownLibrary.getId());
+			learningLibraryMapper.deleteById(otherLibrary.getId());
+			appUserMapper.deleteById(otherUser.getId());
+		}
+	}
+
+	@Test
 	void wrongQuestionRuleWorksAcrossAnswerAttempts() {
 		LearningLibrary library = createLibraryForRequestUser("practice-rule-test");
 		try {
@@ -1080,21 +1220,35 @@ class BackendApplicationTests {
 			question.setCorrectAnswer("[\"A\"]");
 			questionMapper.insert(question);
 
-			SubmitAnswerResponse firstWrong = practiceService.submitAnswer(answer(library.getId(), question.getId(), "B"));
+			SubmitAnswerResponse firstWrong = practiceService.submitAnswer(
+				answer(library.getId(), question.getId(), "B"), requestUser.getId()
+			);
 			assertEquals(false, firstWrong.getCorrect());
 			assertEquals(0, firstWrong.getConsecutiveCorrectCount());
-			assertEquals(1, practiceService.findWrongQuestionsByLibraryId(library.getId()).size());
+			assertEquals(1, practiceService.findWrongQuestionsByLibraryId(
+				library.getId(), requestUser.getId()
+			).size());
 
-			SubmitAnswerResponse firstCorrect = practiceService.submitAnswer(answer(library.getId(), question.getId(), "A"));
+			SubmitAnswerResponse firstCorrect = practiceService.submitAnswer(
+				answer(library.getId(), question.getId(), "A"), requestUser.getId()
+			);
 			assertEquals(1, firstCorrect.getConsecutiveCorrectCount());
 
-			SubmitAnswerResponse resetByWrongAnswer = practiceService.submitAnswer(answer(library.getId(), question.getId(), "B"));
+			SubmitAnswerResponse resetByWrongAnswer = practiceService.submitAnswer(
+				answer(library.getId(), question.getId(), "B"), requestUser.getId()
+			);
 			assertEquals(0, resetByWrongAnswer.getConsecutiveCorrectCount());
 
-			assertEquals(1, practiceService.submitAnswer(answer(library.getId(), question.getId(), "A")).getConsecutiveCorrectCount());
-			SubmitAnswerResponse secondCorrect = practiceService.submitAnswer(answer(library.getId(), question.getId(), "A"));
+			assertEquals(1, practiceService.submitAnswer(
+				answer(library.getId(), question.getId(), "A"), requestUser.getId()
+			).getConsecutiveCorrectCount());
+			SubmitAnswerResponse secondCorrect = practiceService.submitAnswer(
+				answer(library.getId(), question.getId(), "A"), requestUser.getId()
+			);
 			assertEquals(true, secondCorrect.getRemovedFromWrongQuestions());
-			assertEquals(0, practiceService.findWrongQuestionsByLibraryId(library.getId()).size());
+			assertEquals(0, practiceService.findWrongQuestionsByLibraryId(
+				library.getId(), requestUser.getId()
+			).size());
 			assertEquals(0, wrongQuestionMapper.selectCount(new LambdaQueryWrapper<WrongQuestion>()
 				.eq(WrongQuestion::getLibraryId, library.getId())
 				.eq(WrongQuestion::getQuestionId, question.getId())));
@@ -1111,6 +1265,16 @@ class BackendApplicationTests {
 		request.setQuestionId(questionId);
 		request.setSelectedAnswer(List.of(selectedAnswer));
 		return request;
+	}
+
+	private String submitAnswerJson(Long libraryId, Long questionId, String selectedAnswer) {
+		return """
+			{
+			  "libraryId": %d,
+			  "questionId": %d,
+			  "selectedAnswer": ["%s"]
+			}
+			""".formatted(libraryId, questionId, selectedAnswer);
 	}
 
 	private RequestPostProcessor authenticatedRequest() {

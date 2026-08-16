@@ -392,6 +392,73 @@ public class ImportService {
         importBatchMapper.updateById(batch);
     }
 
+    /**
+     * HTTP entry points call these overloads. The no-user overloads remain
+     * available only for the server-owned import processing queue.
+     */
+    public ImportBatchResponse createBatch(
+        Long libraryId, List<MultipartFile> files, Long currentUserId
+    ) {
+        requireCurrentUserOwnsLibrary(libraryId, currentUserId);
+        return createBatch(libraryId, files);
+    }
+
+    public ImportBatchResponse findLatestBatch(Long libraryId, Long currentUserId) {
+        requireCurrentUserOwnsLibrary(libraryId, currentUserId);
+        return findLatestBatch(libraryId);
+    }
+
+    public List<QuestionDraftResponse> findDrafts(
+        Long libraryId, Long importFileId, Long currentUserId
+    ) {
+        requireCurrentUserOwnsLibrary(libraryId, currentUserId);
+        return findDrafts(libraryId, importFileId);
+    }
+
+    public List<QuestionDraftResponse> findBatchDrafts(
+        Long libraryId, Long importBatchId, Long currentUserId
+    ) {
+        requireCurrentUserOwnsLibrary(libraryId, currentUserId);
+        return findBatchDrafts(libraryId, importBatchId);
+    }
+
+    public QuestionDraftResponse updateDraft(
+        Long libraryId,
+        Long importFileId,
+        Long draftId,
+        UpdateQuestionDraftRequest request,
+        Long currentUserId
+    ) {
+        requireCurrentUserOwnsLibrary(libraryId, currentUserId);
+        return updateDraft(libraryId, importFileId, draftId, request);
+    }
+
+    public QuestionDraftResponse confirmDraft(
+        Long libraryId, Long importFileId, Long draftId, Long currentUserId
+    ) {
+        requireCurrentUserOwnsLibrary(libraryId, currentUserId);
+        return confirmDraft(libraryId, importFileId, draftId);
+    }
+
+    public void discardDraft(Long libraryId, Long importFileId, Long draftId, Long currentUserId) {
+        requireCurrentUserOwnsLibrary(libraryId, currentUserId);
+        discardDraft(libraryId, importFileId, draftId);
+    }
+
+    public ImportFileResponse recognizeFile(Long libraryId, Long importFileId, Long currentUserId) {
+        requireCurrentUserOwnsLibrary(libraryId, currentUserId);
+        return recognizeFile(libraryId, importFileId);
+    }
+
+    public ImportFileResponse structureFile(Long libraryId, Long importFileId, Long currentUserId) {
+        requireCurrentUserOwnsLibrary(libraryId, currentUserId);
+        return structureFile(libraryId, importFileId);
+    }
+
+    private void requireCurrentUserOwnsLibrary(Long libraryId, Long currentUserId) {
+        learningLibraryService.findOwnedById(libraryId, currentUserId);
+    }
+
     private ImportFile findOwnedImportFile(Long libraryId, Long importFileId) {
         ImportFile importFile = importFileMapper.selectById(importFileId);
         if (importFile == null) {
