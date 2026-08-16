@@ -1,6 +1,6 @@
 import { File } from 'expo-file-system';
-import { fetch } from 'expo/fetch';
 import { API_BASE_URL } from './apiConfig';
+import { apiFetch } from './apiClient';
 
 export type ImportFileResult = {
   id: number;
@@ -71,7 +71,7 @@ export async function uploadImportFiles(
   let response: Response;
 
   try {
-    response = await fetch(`${API_BASE_URL}/api/libraries/${libraryId}/import-batches`, {
+    response = await apiFetch(`/api/libraries/${libraryId}/import-batches`, {
       method: 'POST',
       body: formData,
     });
@@ -99,9 +99,7 @@ export async function fetchLatestImportBatch(libraryId: string): Promise<ImportB
   let response: Response;
 
   try {
-    response = await fetch(
-      `${API_BASE_URL}/api/libraries/${libraryId}/import-batches/latest`
-    );
+    response = await apiFetch(`/api/libraries/${libraryId}/import-batches/latest`);
   } catch {
     throw new Error('无法读取导入进度，请检查电脑后端是否正在运行');
   }
@@ -127,9 +125,7 @@ export async function getImportBatchDrafts(
   let response: Response;
 
   try {
-    response = await fetch(
-      `${API_BASE_URL}/api/libraries/${libraryId}/import-batches/${importBatchId}/drafts`
-    );
+    response = await apiFetch(`/api/libraries/${libraryId}/import-batches/${importBatchId}/drafts`);
   } catch {
     throw new Error('无法连接草稿服务，请检查电脑后端是否正在运行');
   }
@@ -155,9 +151,7 @@ export async function getImportFileDrafts(
   let response: Response;
 
   try {
-    response = await fetch(
-      `${API_BASE_URL}/api/libraries/${libraryId}/import-batches/files/${importFileId}/drafts`
-    );
+    response = await apiFetch(`/api/libraries/${libraryId}/import-batches/files/${importFileId}/drafts`);
   } catch {
     throw new Error('无法连接草稿服务，请检查电脑后端是否正在运行');
   }
@@ -185,8 +179,8 @@ export async function updateImportFileDraft(
   let response: Response;
 
   try {
-    response = await fetch(
-      `${API_BASE_URL}/api/libraries/${libraryId}/import-batches/files/${importFileId}/drafts/${draftId}`,
+    response = await apiFetch(
+      `/api/libraries/${libraryId}/import-batches/files/${importFileId}/drafts/${draftId}`,
       {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -219,8 +213,8 @@ export async function discardImportFileDraft(
   let response: Response;
 
   try {
-    response = await fetch(
-      `${API_BASE_URL}/api/libraries/${libraryId}/import-batches/files/${importFileId}/drafts/${draftId}`,
+    response = await apiFetch(
+      `/api/libraries/${libraryId}/import-batches/files/${importFileId}/drafts/${draftId}`,
       { method: 'DELETE' }
     );
   } catch {
@@ -247,8 +241,8 @@ export async function confirmImportFileDraft(
   let response: Response;
 
   try {
-    response = await fetch(
-      `${API_BASE_URL}/api/libraries/${libraryId}/import-batches/files/${importFileId}/drafts/${draftId}/confirm`,
+    response = await apiFetch(
+      `/api/libraries/${libraryId}/import-batches/files/${importFileId}/drafts/${draftId}/confirm`,
       { method: 'POST' }
     );
   } catch {

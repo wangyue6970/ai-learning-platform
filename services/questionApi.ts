@@ -1,4 +1,4 @@
-import { API_BASE_URL } from './apiConfig';
+import { apiFetch } from './apiClient';
 
 export type PracticeQuestionType = 'single_choice' | 'multiple_choice' | 'true_false';
 
@@ -59,7 +59,7 @@ export async function fetchWrongQuestions(libraryId: string): Promise<PracticeQu
 }
 
 export async function fetchQuestionDetail(questionId: string): Promise<EditableQuestion> {
-  const response = await fetch(`${API_BASE_URL}/api/questions/${questionId}`);
+  const response = await apiFetch(`/api/questions/${questionId}`);
 
   if (!response.ok) {
     throw new Error('题目详情加载失败');
@@ -77,7 +77,7 @@ export async function updateQuestion(
   questionId: string,
   payload: UpdateQuestionPayload
 ): Promise<EditableQuestion> {
-  const response = await fetch(`${API_BASE_URL}/api/questions/${questionId}`, {
+  const response = await apiFetch(`/api/questions/${questionId}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
@@ -96,7 +96,7 @@ export async function updateQuestion(
 }
 
 export async function deleteQuestion(questionId: string): Promise<void> {
-  const response = await fetch(`${API_BASE_URL}/api/questions/${questionId}`, {
+  const response = await apiFetch(`/api/questions/${questionId}`, {
     method: 'DELETE',
   });
 
@@ -110,7 +110,7 @@ export async function submitAnswer(
   questionId: string,
   selectedAnswer: string[]
 ): Promise<SubmitAnswerResult> {
-  const response = await fetch(`${API_BASE_URL}/api/practice/answers`, {
+  const response = await apiFetch('/api/practice/answers', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ libraryId: Number(libraryId), questionId: Number(questionId), selectedAnswer }),
@@ -124,7 +124,7 @@ export async function submitAnswer(
 }
 
 async function fetchQuestions(path: string): Promise<PracticeQuestion[]> {
-  const response = await fetch(`${API_BASE_URL}${path}`);
+  const response = await apiFetch(path);
 
   if (!response.ok) {
     throw new Error('题目加载失败');

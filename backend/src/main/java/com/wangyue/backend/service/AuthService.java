@@ -78,8 +78,8 @@ public class AuthService {
         }
 
         String username = request.getUsername().trim();
-        if (username.length() < 3 || username.length() > 50) {
-            throw new IllegalArgumentException("用户名长度必须为 3 到 50 个字符");
+        if (username.length() < 2 || username.length() > 50) {
+            throw new IllegalArgumentException("用户名长度必须为 2 到 50 个字符");
         }
 
         String password = request.getPassword();

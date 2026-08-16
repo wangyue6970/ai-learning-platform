@@ -371,6 +371,21 @@ class BackendApplicationTests {
 	}
 
 	@Test
+	void userCanRegisterWithExactlyTwoCharacterUsername() {
+		String username = findAvailableTwoCharacterUsername();
+		RegisterRequest request = new RegisterRequest();
+		request.setUsername(username);
+		request.setPassword("demo-password-123");
+
+		AppUser user = authService.register(request);
+		try {
+			assertEquals(2, user.getUsername().length());
+		} finally {
+			appUserMapper.deleteById(user.getId());
+		}
+	}
+
+	@Test
 	void registerApiCreatesUserAndDoesNotExposePasswordHash() throws Exception {
 		String username = "register-api-" + System.nanoTime();
 
@@ -920,6 +935,19 @@ class BackendApplicationTests {
 		request.setQuestionId(questionId);
 		request.setSelectedAnswer(List.of(selectedAnswer));
 		return request;
+	}
+
+	private String findAvailableTwoCharacterUsername() {
+		for (char first = 'a'; first <= 'z'; first++) {
+			for (char second = 'a'; second <= 'z'; second++) {
+				String candidate = "" + first + second;
+				if (authService.findByUsername(candidate) == null) {
+					return candidate;
+				}
+			}
+		}
+
+		throw new IllegalStateException("没有可用的两字符测试用户名");
 	}
 
 }

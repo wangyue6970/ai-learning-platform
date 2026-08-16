@@ -1,4 +1,4 @@
-import { API_BASE_URL } from './apiConfig';
+import { apiFetch } from './apiClient';
 
 export type Library = {
   id: string;
@@ -11,7 +11,7 @@ export type Library = {
 type LibraryResponse = Omit<Library, 'id' | 'wrongQuestionCount'> & { id: number };
 
 export async function fetchLibraries(): Promise<Library[]> {
-  const response = await fetch(`${API_BASE_URL}/api/libraries`);
+  const response = await apiFetch('/api/libraries');
 
   if (!response.ok) {
     throw new Error('学习库加载失败');
@@ -23,7 +23,7 @@ export async function fetchLibraries(): Promise<Library[]> {
 }
 
 export async function createLibrary(name: string): Promise<Library> {
-  const response = await fetch(`${API_BASE_URL}/api/libraries`, {
+  const response = await apiFetch('/api/libraries', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ name }),
@@ -37,7 +37,7 @@ export async function createLibrary(name: string): Promise<Library> {
 }
 
 export async function updateLibrary(id: string, name: string): Promise<Library> {
-  const response = await fetch(`${API_BASE_URL}/api/libraries/${id}`, {
+  const response = await apiFetch(`/api/libraries/${id}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ name }),
@@ -51,7 +51,7 @@ export async function updateLibrary(id: string, name: string): Promise<Library> 
 }
 
 export async function deleteLibrary(id: string): Promise<void> {
-  const response = await fetch(`${API_BASE_URL}/api/libraries/${id}`, {
+  const response = await apiFetch(`/api/libraries/${id}`, {
     method: 'DELETE',
   });
 

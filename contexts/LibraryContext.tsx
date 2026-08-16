@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useState, type Dispatch, type ReactNode, type SetStateAction } from 'react';
+import { useAuth } from './AuthContext';
 import { createLibrary as createLibraryRequest, deleteLibrary as deleteLibraryRequest, fetchLibraries, type Library, updateLibrary as updateLibraryRequest } from '../services/libraryApi';
 
 type LibraryContextValue = {
@@ -15,11 +16,19 @@ type LibraryContextValue = {
 const LibraryContext = createContext<LibraryContextValue | undefined>(undefined);
 
 export function LibraryProvider({ children }: { children: ReactNode }) {
+  const { accessToken, isRestoringSession } = useAuth();
   const [libraries, setLibraries] = useState<Library[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const reloadLibraries = useCallback(async () => {
+    if (!accessToken) {
+      setLibraries([]);
+      setError(null);
+      setIsLoading(false);
+      return;
+    }
+
     setIsLoading(true);
     setError(null);
 
@@ -47,11 +56,13 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
   const deleteLibrary = useCallback(async (id: string) => {
     await deleteLibraryRequest(id);
     setLibraries((currentLibraries) => currentLibraries.filter((library) => library.id !== id));
-  }, []);
+  }, [accessToken]);
 
   useEffect(() => {
-    void reloadLibraries();
-  }, [reloadLibraries]);
+    if (!isRestoringSession) {
+      void reloadLibraries();
+    }
+  }, [isRestoringSession, reloadLibraries]);
 
   return (
     <LibraryContext.Provider value={{ libraries, setLibraries, isLoading, error, reloadLibraries, createLibrary, updateLibrary, deleteLibrary }}>
