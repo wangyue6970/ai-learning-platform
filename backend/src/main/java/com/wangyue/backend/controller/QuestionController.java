@@ -8,6 +8,7 @@ import com.wangyue.backend.entity.Question;
 import com.wangyue.backend.service.QuestionService;
 import java.util.List;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -29,31 +30,41 @@ public class QuestionController {
     }
 
     @PostMapping
-    public Question create(@RequestBody CreateQuestionRequest request) {
-        return questionService.create(request);
+    public Question create(
+        @RequestBody CreateQuestionRequest request,
+        @AuthenticationPrincipal Long currentUserId
+    ) {
+        return questionService.create(request, currentUserId);
     }
 
     @GetMapping("/library/{libraryId}")
-    public List<PracticeQuestionResponse> findByLibraryId(@PathVariable Long libraryId) {
-        return questionService.findPracticeByLibraryId(libraryId);
+    public List<PracticeQuestionResponse> findByLibraryId(
+        @PathVariable Long libraryId,
+        @AuthenticationPrincipal Long currentUserId
+    ) {
+        return questionService.findPracticeByLibraryId(libraryId, currentUserId);
     }
 
     @GetMapping("/{id}")
-    public QuestionDetailResponse findDetailById(@PathVariable Long id) {
-        return questionService.findDetailById(id);
+    public QuestionDetailResponse findDetailById(
+        @PathVariable Long id,
+        @AuthenticationPrincipal Long currentUserId
+    ) {
+        return questionService.findDetailById(id, currentUserId);
     }
 
     @PatchMapping("/{id}")
     public QuestionDetailResponse update(
         @PathVariable Long id,
-        @RequestBody UpdateQuestionRequest request
+        @RequestBody UpdateQuestionRequest request,
+        @AuthenticationPrincipal Long currentUserId
     ) {
-        return questionService.update(id, request);
+        return questionService.update(id, request, currentUserId);
     }
 
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void delete(@PathVariable Long id) {
-        questionService.delete(id);
+    public void delete(@PathVariable Long id, @AuthenticationPrincipal Long currentUserId) {
+        questionService.delete(id, currentUserId);
     }
 }

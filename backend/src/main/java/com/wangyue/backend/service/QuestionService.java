@@ -46,6 +46,17 @@ public class QuestionService {
         this.objectMapper = objectMapper;
     }
 
+    /**
+     * Public HTTP use: the target learning library must belong to the
+     * authenticated user before a question can be created in it.
+     */
+    @Transactional
+    public Question create(CreateQuestionRequest request, Long currentUserId) {
+        validateCreateRequest(request);
+        learningLibraryService.findOwnedById(request.getLibraryId(), currentUserId);
+        return create(request);
+    }
+
     private String toJson(List<String> values) {
         try {
             return objectMapper.writeValueAsString(values);
@@ -142,6 +153,11 @@ public class QuestionService {
         );
     }
 
+    public List<Question> findByLibraryId(Long libraryId, Long currentUserId) {
+        learningLibraryService.findOwnedById(libraryId, currentUserId);
+        return findByLibraryId(libraryId);
+    }
+
     public QuestionDetailResponse findDetailById(Long id) {
         Question question = questionMapper.selectById(id);
         if (question == null) {
@@ -169,6 +185,11 @@ public class QuestionService {
         response.setCorrectAnswer(readAnswers(question.getCorrectAnswer()));
         response.setExplanation(question.getExplanation());
         return response;
+    }
+
+    public QuestionDetailResponse findDetailById(Long id, Long currentUserId) {
+        findOwnedQuestionById(id, currentUserId);
+        return findDetailById(id);
     }
 
     @Transactional
@@ -207,12 +228,23 @@ public class QuestionService {
         return findDetailById(id);
     }
 
+    @Transactional
+    public QuestionDetailResponse update(Long id, UpdateQuestionRequest request, Long currentUserId) {
+        findOwnedQuestionById(id, currentUserId);
+        return update(id, request);
+    }
+
     public void delete(Long id) {
         Question question = questionMapper.selectById(id);
         if (question == null) {
             throw new IllegalArgumentException("题目不存在");
         }
         questionMapper.deleteById(id);
+    }
+
+    public void delete(Long id, Long currentUserId) {
+        findOwnedQuestionById(id, currentUserId);
+        delete(id);
     }
 
     public List<PracticeQuestionResponse> findPracticeByLibraryId(Long libraryId) {
@@ -243,5 +275,19 @@ public class QuestionService {
             responses.add(response);
         }
         return responses;
+    }
+
+    public List<PracticeQuestionResponse> findPracticeByLibraryId(Long libraryId, Long currentUserId) {
+        findByLibraryId(libraryId, currentUserId);
+        return findPracticeByLibraryId(libraryId);
+    }
+
+    private Question findOwnedQuestionById(Long id, Long currentUserId) {
+        Question question = questionMapper.selectById(id);
+        if (question == null) {
+            throw new IllegalArgumentException("题目不存在");
+        }
+        learningLibraryService.findOwnedById(question.getLibraryId(), currentUserId);
+        return question;
     }
 }

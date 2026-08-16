@@ -944,14 +944,68 @@ class BackendApplicationTests {
 			request.setCorrectAnswer(List.of("B"));
 			request.setOptions(List.of(optionA, optionB));
 
-			Question question = questionService.create(request);
+			Question question = questionService.create(request, requestUser.getId());
 			assertNotNull(question.getId());
 
-			List<Question> questions = questionService.findByLibraryId(library.getId());
+			List<Question> questions = questionService.findByLibraryId(library.getId(), requestUser.getId());
 			assertEquals(1, questions.size());
 			assertEquals(question.getId(), questions.get(0).getId());
 		} finally {
 			learningLibraryMapper.deleteById(library.getId());
+		}
+	}
+
+	@Test
+	void questionEndpointsAreScopedToTheirAuthenticatedOwner() throws Exception {
+		LearningLibrary ownLibrary = createLibraryForRequestUser("question-own-library-" + System.nanoTime());
+		AppUser otherUser = new AppUser();
+		otherUser.setUsername("question-other-owner-" + System.nanoTime());
+		otherUser.setPasswordHash(passwordEncoder.encode("demo-password-123"));
+		appUserMapper.insert(otherUser);
+		LearningLibrary otherLibrary = learningLibraryService.create(
+			"question-other-library-" + System.nanoTime(), otherUser.getId()
+		);
+		Question otherQuestion = questionService.create(
+			createSingleChoiceQuestionRequest(otherLibrary.getId(), "private question"), otherUser.getId()
+		);
+
+		try {
+			mockMvc.perform(get("/api/questions/library/" + otherLibrary.getId())
+				.with(authenticatedRequest()))
+				.andExpect(status().isForbidden())
+				.andExpect(jsonPath("$.message").value("无权访问该学习库"));
+
+			mockMvc.perform(get("/api/questions/" + otherQuestion.getId())
+				.with(authenticatedRequest()))
+				.andExpect(status().isForbidden())
+				.andExpect(jsonPath("$.message").value("无权访问该学习库"));
+
+			mockMvc.perform(post("/api/questions")
+				.contentType(MediaType.APPLICATION_JSON)
+				.content(questionRequestJson(otherLibrary.getId(), "attempted create"))
+				.with(authenticatedRequest()))
+				.andExpect(status().isForbidden())
+				.andExpect(jsonPath("$.message").value("无权访问该学习库"));
+
+			mockMvc.perform(patch("/api/questions/" + otherQuestion.getId())
+				.contentType(MediaType.APPLICATION_JSON)
+				.content(questionUpdateJson("attempted update"))
+				.with(authenticatedRequest()))
+				.andExpect(status().isForbidden())
+				.andExpect(jsonPath("$.message").value("无权访问该学习库"));
+
+			mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete(
+				"/api/questions/" + otherQuestion.getId()
+			).with(authenticatedRequest()))
+				.andExpect(status().isForbidden())
+				.andExpect(jsonPath("$.message").value("无权访问该学习库"));
+
+			assertNotNull(questionMapper.selectById(otherQuestion.getId()));
+			assertTrue(questionService.findByLibraryId(ownLibrary.getId(), requestUser.getId()).isEmpty());
+		} finally {
+			learningLibraryMapper.deleteById(ownLibrary.getId());
+			learningLibraryMapper.deleteById(otherLibrary.getId());
+			appUserMapper.deleteById(otherUser.getId());
 		}
 	}
 
@@ -1068,6 +1122,55 @@ class BackendApplicationTests {
 
 	private LearningLibrary createLibraryForRequestUser(String name) {
 		return learningLibraryService.create(name, requestUser.getId());
+	}
+
+	private CreateQuestionRequest createSingleChoiceQuestionRequest(Long libraryId, String stem) {
+		CreateQuestionOptionRequest optionA = new CreateQuestionOptionRequest();
+		optionA.setOptionKey("A");
+		optionA.setContent("wrong answer");
+		optionA.setSortOrder(1);
+
+		CreateQuestionOptionRequest optionB = new CreateQuestionOptionRequest();
+		optionB.setOptionKey("B");
+		optionB.setContent("correct answer");
+		optionB.setSortOrder(2);
+
+		CreateQuestionRequest request = new CreateQuestionRequest();
+		request.setLibraryId(libraryId);
+		request.setQuestionType("SINGLE_CHOICE");
+		request.setStem(stem);
+		request.setCorrectAnswer(List.of("B"));
+		request.setOptions(List.of(optionA, optionB));
+		return request;
+	}
+
+	private String questionRequestJson(Long libraryId, String stem) {
+		return """
+			{
+			  "libraryId": %d,
+			  "questionType": "SINGLE_CHOICE",
+			  "stem": "%s",
+			  "correctAnswer": ["B"],
+			  "options": [
+			    {"optionKey": "A", "content": "wrong answer", "sortOrder": 1},
+			    {"optionKey": "B", "content": "correct answer", "sortOrder": 2}
+			  ]
+			}
+			""".formatted(libraryId, stem);
+	}
+
+	private String questionUpdateJson(String stem) {
+		return """
+			{
+			  "questionType": "SINGLE_CHOICE",
+			  "stem": "%s",
+			  "correctAnswer": ["B"],
+			  "options": [
+			    {"optionKey": "A", "content": "wrong answer", "sortOrder": 1},
+			    {"optionKey": "B", "content": "correct answer", "sortOrder": 2}
+			  ]
+			}
+			""".formatted(stem);
 	}
 
 	private String findAvailableTwoCharacterUsername() {
