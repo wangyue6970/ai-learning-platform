@@ -54,6 +54,29 @@ public class JwtTokenService {
             .compact();
     }
 
+    /**
+     * Verifies the JWT signature and expiry, then returns the user id that was
+     * written into the token subject at login time.
+     */
+    public Long parseAccessTokenUserId(String accessToken) {
+        String subject = Jwts.parser()
+            .verifyWith(signingKey)
+            .build()
+            .parseSignedClaims(accessToken)
+            .getPayload()
+            .getSubject();
+
+        if (subject == null || subject.isBlank()) {
+            throw new IllegalArgumentException("JWT does not contain a user id");
+        }
+
+        Long userId = Long.valueOf(subject);
+        if (userId <= 0) {
+            throw new IllegalArgumentException("JWT user id must be positive");
+        }
+        return userId;
+    }
+
     public long getAccessTokenExpiresInSeconds() {
         return accessTokenExpiresInSeconds;
     }

@@ -6,6 +6,7 @@ import com.wangyue.backend.entity.LearningLibrary;
 import com.wangyue.backend.service.LearningLibraryService;
 import java.util.List;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -27,28 +28,35 @@ public class LearningLibraryController {
     }
 
     @GetMapping
-    public List<LearningLibrary> findAll() {
-        return learningLibraryService.findAll();
+    public List<LearningLibrary> findAll(@AuthenticationPrincipal Long currentUserId) {
+        return learningLibraryService.findAllOwnedBy(currentUserId);
     }
 
     @GetMapping("/{id}")
-    public LearningLibrary findById(@PathVariable Long id) {
-        return learningLibraryService.findById(id);
+    public LearningLibrary findById(@PathVariable Long id, @AuthenticationPrincipal Long currentUserId) {
+        return learningLibraryService.findOwnedById(id, currentUserId);
     }
 
     @PatchMapping("/{id}")
-    public LearningLibrary update(@PathVariable Long id, @RequestBody UpdateLearningLibraryRequest request) {
-        return learningLibraryService.update(id, request.getName());
+    public LearningLibrary update(
+        @PathVariable Long id,
+        @RequestBody UpdateLearningLibraryRequest request,
+        @AuthenticationPrincipal Long currentUserId
+    ) {
+        return learningLibraryService.update(id, request.getName(), currentUserId);
     }
 
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void delete(@PathVariable Long id) {
-        learningLibraryService.delete(id);
+    public void delete(@PathVariable Long id, @AuthenticationPrincipal Long currentUserId) {
+        learningLibraryService.delete(id, currentUserId);
     }
 
     @PostMapping
-    public LearningLibrary create(@RequestBody CreateLearningLibraryRequest request) {
-        return learningLibraryService.create(request.getName());
+    public LearningLibrary create(
+        @RequestBody CreateLearningLibraryRequest request,
+        @AuthenticationPrincipal Long currentUserId
+    ) {
+        return learningLibraryService.create(request.getName(), currentUserId);
     }
 }

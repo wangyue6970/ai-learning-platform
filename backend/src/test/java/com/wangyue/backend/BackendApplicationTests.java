@@ -42,6 +42,7 @@ import com.wangyue.backend.service.OcrService;
 import com.wangyue.backend.service.ImportService;
 import com.wangyue.backend.service.LlmService;
 import com.wangyue.backend.service.WordDocumentService;
+import com.wangyue.backend.service.JwtTokenService;
 import java.awt.Color;
 import java.awt.Font;
 import java.awt.Graphics2D;
@@ -53,20 +54,26 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import org.apache.poi.xwpf.usermodel.XWPFDocument;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
+import org.springframework.http.HttpHeaders;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.web.servlet.MvcResult;
+import org.springframework.test.web.servlet.request.RequestPostProcessor;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -134,6 +141,28 @@ class BackendApplicationTests {
 	@Autowired
 	private MockMvc mockMvc;
 
+	@Autowired
+	private JwtTokenService jwtTokenService;
+
+	private AppUser requestUser;
+	private String requestUserAccessToken;
+
+	@BeforeEach
+	void createRequestUser() {
+		requestUser = new AppUser();
+		requestUser.setUsername("request-user-" + System.nanoTime());
+		requestUser.setPasswordHash(passwordEncoder.encode("demo-password-123"));
+		appUserMapper.insert(requestUser);
+		requestUserAccessToken = jwtTokenService.createAccessToken(requestUser.getId());
+	}
+
+	@AfterEach
+	void deleteRequestUser() {
+		if (requestUser != null && requestUser.getId() != null) {
+			appUserMapper.deleteById(requestUser.getId());
+		}
+	}
+
 	@Test
 	void llmServiceTurnsRecognizedTextIntoQuestionObjects() {
 		List<RecognizedQuestion> questions = llmService.structureQuestions("""
@@ -193,7 +222,7 @@ class BackendApplicationTests {
 
 	@Test
 	void wordRecognitionChangesOnlyItsOwnFileStatus() throws Exception {
-		LearningLibrary library = learningLibraryService.create("word-flow-test-" + System.nanoTime());
+		LearningLibrary library = createLibraryForRequestUser("word-flow-test-" + System.nanoTime());
 		Path documentPath = Files.createTempFile("word-import-test-", ".docx");
 		ImportBatch batch = new ImportBatch();
 		batch.setLibraryId(library.getId());
@@ -244,7 +273,7 @@ class BackendApplicationTests {
 	@Test
 	@EnabledIfSystemProperty(named = "includeOcrIntegrationTests", matches = "true")
 	void imageRecognitionChangesOnlyItsOwnFileStatus() throws Exception {
-		LearningLibrary library = learningLibraryService.create("ocr-flow-test-" + System.nanoTime());
+		LearningLibrary library = createLibraryForRequestUser("ocr-flow-test-" + System.nanoTime());
 		Path imagePath = Files.createTempFile("ocr-import-test-", ".png");
 		ImportBatch batch = new ImportBatch();
 		batch.setLibraryId(library.getId());
@@ -295,12 +324,13 @@ class BackendApplicationTests {
 
 	@Test
 	void recognitionApiRejectsAFileFromAnotherLibrary() throws Exception {
-		LearningLibrary ownerLibrary = learningLibraryService.create("recognize-owner-" + System.nanoTime());
-		LearningLibrary otherLibrary = learningLibraryService.create("recognize-other-" + System.nanoTime());
+		LearningLibrary ownerLibrary = createLibraryForRequestUser("recognize-owner-" + System.nanoTime());
+		LearningLibrary otherLibrary = createLibraryForRequestUser("recognize-other-" + System.nanoTime());
 		String imageFileName = "recognize-source-" + System.nanoTime() + ".png";
 		try {
 			mockMvc.perform(multipart("/api/libraries/" + ownerLibrary.getId() + "/import-batches")
-				.file(new MockMultipartFile("files", imageFileName, "image/png", "test image".getBytes())))
+				.file(new MockMultipartFile("files", imageFileName, "image/png", "test image".getBytes()))
+				.with(authenticatedRequest()))
 				.andExpect(status().isCreated());
 
 			Long importFileId = jdbcTemplate.queryForObject(
@@ -308,7 +338,8 @@ class BackendApplicationTests {
 			);
 
 			mockMvc.perform(post("/api/libraries/" + otherLibrary.getId()
-				+ "/import-batches/files/" + importFileId + "/recognize"))
+				+ "/import-batches/files/" + importFileId + "/recognize")
+				.with(authenticatedRequest()))
 				.andExpect(status().isBadRequest())
 				.andExpect(jsonPath("$.message").value("导入文件不属于当前学习库"));
 		} finally {
@@ -467,8 +498,34 @@ class BackendApplicationTests {
 	}
 
 	@Test
+	void protectedApiRequiresAValidJwt() throws Exception {
+		mockMvc.perform(get("/api/libraries"))
+			.andExpect(status().isUnauthorized())
+			.andExpect(jsonPath("$.message").value("请先登录或重新登录"));
+
+		mockMvc.perform(get("/api/libraries").with(authenticatedRequest()))
+			.andExpect(status().isOk());
+	}
+
+	@Test
+	void protectedApiRejectsATokenWhoseUserWasDeleted() throws Exception {
+		AppUser deletedUser = new AppUser();
+		deletedUser.setUsername("deleted-token-user-" + System.nanoTime());
+		deletedUser.setPasswordHash(passwordEncoder.encode("demo-password-123"));
+		appUserMapper.insert(deletedUser);
+
+		String deletedUserToken = jwtTokenService.createAccessToken(deletedUser.getId());
+		appUserMapper.deleteById(deletedUser.getId());
+
+		mockMvc.perform(get("/api/libraries")
+			.header(HttpHeaders.AUTHORIZATION, "Bearer " + deletedUserToken))
+			.andExpect(status().isUnauthorized())
+			.andExpect(jsonPath("$.message").value("请先登录或重新登录"));
+	}
+
+	@Test
 	void importApiKeepsOtherFilesWhenOneFileFails() throws Exception {
-		LearningLibrary library = learningLibraryService.create("import-api-test-" + System.nanoTime());
+		LearningLibrary library = createLibraryForRequestUser("import-api-test-" + System.nanoTime());
 		String imageFileName = "question-" + System.nanoTime() + ".png";
 		try {
 			MockMultipartFile image = new MockMultipartFile(
@@ -480,7 +537,8 @@ class BackendApplicationTests {
 
 			mockMvc.perform(multipart("/api/libraries/" + library.getId() + "/import-batches")
 				.file(image)
-				.file(unsupportedFile))
+				.file(unsupportedFile)
+				.with(authenticatedRequest()))
 				.andExpect(status().isCreated())
 				.andExpect(jsonPath("$.libraryId").value(library.getId()))
 				.andExpect(jsonPath("$.status").value("PROCESSING"))
@@ -505,14 +563,15 @@ class BackendApplicationTests {
 
 	@Test
 	void importBatchIsMarkedFailedWhenEveryFileFails() throws Exception {
-		LearningLibrary library = learningLibraryService.create("failed-import-api-test-" + System.nanoTime());
+		LearningLibrary library = createLibraryForRequestUser("failed-import-api-test-" + System.nanoTime());
 		try {
 			MockMultipartFile unsupportedFile = new MockMultipartFile(
 				"files", "unsupported.pdf", "application/pdf", "test pdf".getBytes()
 			);
 
 			mockMvc.perform(multipart("/api/libraries/" + library.getId() + "/import-batches")
-				.file(unsupportedFile))
+				.file(unsupportedFile)
+				.with(authenticatedRequest()))
 				.andExpect(status().isCreated())
 				.andExpect(jsonPath("$.status").value("FAILED"))
 				.andExpect(jsonPath("$.files[0].status").value("UPLOAD_FAILED"));
@@ -523,7 +582,7 @@ class BackendApplicationTests {
 
 	@Test
 	void wordImportApiAcceptsTheLongDocxMimeType() throws Exception {
-		LearningLibrary library = learningLibraryService.create("word-import-api-test-" + System.nanoTime());
+		LearningLibrary library = createLibraryForRequestUser("word-import-api-test-" + System.nanoTime());
 		String wordFileName = "questions-" + System.nanoTime() + ".docx";
 		try {
 			MockMultipartFile wordFile = new MockMultipartFile(
@@ -534,7 +593,8 @@ class BackendApplicationTests {
 			);
 
 			mockMvc.perform(multipart("/api/libraries/" + library.getId() + "/import-batches")
-				.file(wordFile))
+				.file(wordFile)
+				.with(authenticatedRequest()))
 				.andExpect(status().isCreated())
 				.andExpect(jsonPath("$.files[0].originalFileName").value(wordFileName))
 				.andExpect(jsonPath("$.files[0].id").isNumber());
@@ -554,13 +614,14 @@ class BackendApplicationTests {
 
 	@Test
 	void importFileDraftsCanBeReadOnlyFromItsOwnLibrary() throws Exception {
-		LearningLibrary ownerLibrary = learningLibraryService.create("draft-owner-" + System.nanoTime());
-		LearningLibrary otherLibrary = learningLibraryService.create("draft-other-" + System.nanoTime());
+		LearningLibrary ownerLibrary = createLibraryForRequestUser("draft-owner-" + System.nanoTime());
+		LearningLibrary otherLibrary = createLibraryForRequestUser("draft-other-" + System.nanoTime());
 		String imageFileName = "draft-source-" + System.nanoTime() + ".png";
 		try {
 			MvcResult uploadResult = mockMvc.perform(
 				multipart("/api/libraries/" + ownerLibrary.getId() + "/import-batches")
 					.file(new MockMultipartFile("files", imageFileName, "image/png", "test image".getBytes()))
+					.with(authenticatedRequest())
 			).andExpect(status().isCreated()).andReturn();
 
 			String responseBody = uploadResult.getResponse().getContentAsString();
@@ -570,12 +631,14 @@ class BackendApplicationTests {
 
 			assertNotNull(responseBody);
 			mockMvc.perform(get("/api/libraries/" + ownerLibrary.getId()
-				+ "/import-batches/files/" + importFileId + "/drafts"))
+				+ "/import-batches/files/" + importFileId + "/drafts")
+				.with(authenticatedRequest()))
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$").isEmpty());
 
 			mockMvc.perform(get("/api/libraries/" + otherLibrary.getId()
-				+ "/import-batches/files/" + importFileId + "/drafts"))
+				+ "/import-batches/files/" + importFileId + "/drafts")
+				.with(authenticatedRequest()))
 				.andExpect(status().isBadRequest())
 				.andExpect(jsonPath("$.message").value("导入文件不属于当前学习库"));
 		} finally {
@@ -595,11 +658,12 @@ class BackendApplicationTests {
 
 	@Test
 	void validRecognitionResultCreatesDraftsButNeverCreatesFormalQuestions() throws Exception {
-		LearningLibrary library = learningLibraryService.create("recognition-draft-" + System.nanoTime());
+		LearningLibrary library = createLibraryForRequestUser("recognition-draft-" + System.nanoTime());
 		String imageFileName = "recognition-source-" + System.nanoTime() + ".png";
 		try {
 			mockMvc.perform(multipart("/api/libraries/" + library.getId() + "/import-batches")
-				.file(new MockMultipartFile("files", imageFileName, "image/png", "test image".getBytes())))
+				.file(new MockMultipartFile("files", imageFileName, "image/png", "test image".getBytes()))
+				.with(authenticatedRequest()))
 				.andExpect(status().isCreated());
 
 			Long importFileId = jdbcTemplate.queryForObject(
@@ -648,11 +712,12 @@ class BackendApplicationTests {
 
 	@Test
 	void confirmedDraftCreatesOneFormalQuestionOnlyOnce() throws Exception {
-		LearningLibrary library = learningLibraryService.create("confirm-draft-" + System.nanoTime());
+		LearningLibrary library = createLibraryForRequestUser("confirm-draft-" + System.nanoTime());
 		String imageFileName = "confirm-source-" + System.nanoTime() + ".png";
 		try {
 			mockMvc.perform(multipart("/api/libraries/" + library.getId() + "/import-batches")
-				.file(new MockMultipartFile("files", imageFileName, "image/png", "test image".getBytes())))
+				.file(new MockMultipartFile("files", imageFileName, "image/png", "test image".getBytes()))
+				.with(authenticatedRequest()))
 				.andExpect(status().isCreated());
 
 			Long importFileId = jdbcTemplate.queryForObject(
@@ -700,11 +765,12 @@ class BackendApplicationTests {
 
 	@Test
 	void structuredFileCreatesDraftsButNeverCreatesFormalQuestions() throws Exception {
-		LearningLibrary library = learningLibraryService.create("llm-structure-" + System.nanoTime());
+		LearningLibrary library = createLibraryForRequestUser("llm-structure-" + System.nanoTime());
 		String imageFileName = "llm-source-" + System.nanoTime() + ".png";
 		try {
 			mockMvc.perform(multipart("/api/libraries/" + library.getId() + "/import-batches")
-				.file(new MockMultipartFile("files", imageFileName, "image/png", "test image".getBytes())))
+				.file(new MockMultipartFile("files", imageFileName, "image/png", "test image".getBytes()))
+				.with(authenticatedRequest()))
 				.andExpect(status().isCreated());
 
 			Long importFileId = jdbcTemplate.queryForObject(
@@ -774,11 +840,11 @@ class BackendApplicationTests {
 
 	@Test
 	void libraryCanBeCreatedAndUpdated() {
-		LearningLibrary library = learningLibraryService.create("自动测试学习库");
+		LearningLibrary library = createLibraryForRequestUser("自动测试学习库");
 		try {
 			assertNotNull(library.getId());
 			assertNotNull(library.getOwnerId());
-			LearningLibrary updatedLibrary = learningLibraryService.update(library.getId(), "更新后的学习库");
+			LearningLibrary updatedLibrary = learningLibraryService.update(library.getId(), "更新后的学习库", requestUser.getId());
 			assertEquals("更新后的学习库", updatedLibrary.getName());
 			LearningLibrary savedLibrary = learningLibraryService.findById(library.getId());
 			assertNotNull(savedLibrary);
@@ -790,20 +856,76 @@ class BackendApplicationTests {
 
 	@Test
 	void learningLibrariesCanBeListed() {
-		List<LearningLibrary> libraries = learningLibraryService.findAll();
+		List<LearningLibrary> libraries = learningLibraryService.findAllOwnedBy(requestUser.getId());
 		assertNotNull(libraries);
 	}
 
 	@Test
+	void learningLibrariesAreScopedToTheirAuthenticatedOwner() throws Exception {
+		LearningLibrary ownLibrary = createLibraryForRequestUser("own-library-" + System.nanoTime());
+		AppUser otherUser = new AppUser();
+		otherUser.setUsername("other-owner-" + System.nanoTime());
+		otherUser.setPasswordHash(passwordEncoder.encode("demo-password-123"));
+		appUserMapper.insert(otherUser);
+		LearningLibrary otherLibrary = learningLibraryService.create(
+			"other-library-" + System.nanoTime(), otherUser.getId()
+		);
+		String createdViaApiName = "api-owned-library-" + System.nanoTime();
+
+		try {
+			List<LearningLibrary> visibleLibraries = learningLibraryService.findAllOwnedBy(requestUser.getId());
+			assertTrue(visibleLibraries.stream().anyMatch(library -> library.getId().equals(ownLibrary.getId())));
+			assertFalse(visibleLibraries.stream().anyMatch(library -> library.getId().equals(otherLibrary.getId())));
+			assertThrows(AccessDeniedException.class, () ->
+				learningLibraryService.findOwnedById(otherLibrary.getId(), requestUser.getId())
+			);
+
+			mockMvc.perform(get("/api/libraries/" + otherLibrary.getId()).with(authenticatedRequest()))
+				.andExpect(status().isForbidden())
+				.andExpect(jsonPath("$.message").value("无权访问该学习库"));
+
+			mockMvc.perform(patch("/api/libraries/" + otherLibrary.getId())
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("{\"name\":\"attempted rename\"}")
+				.with(authenticatedRequest()))
+				.andExpect(status().isForbidden())
+				.andExpect(jsonPath("$.message").value("无权访问该学习库"));
+
+			mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete(
+				"/api/libraries/" + otherLibrary.getId()
+			).with(authenticatedRequest()))
+				.andExpect(status().isForbidden())
+				.andExpect(jsonPath("$.message").value("无权访问该学习库"));
+
+			mockMvc.perform(post("/api/libraries")
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("{\"name\":\"" + createdViaApiName + "\"}")
+				.with(authenticatedRequest()))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.ownerId").value(requestUser.getId()));
+		} finally {
+			LearningLibrary createdViaApi = learningLibraryMapper.selectOne(
+				new LambdaQueryWrapper<LearningLibrary>().eq(LearningLibrary::getName, createdViaApiName)
+			);
+			if (createdViaApi != null) {
+				learningLibraryMapper.deleteById(createdViaApi.getId());
+			}
+			learningLibraryMapper.deleteById(ownLibrary.getId());
+			learningLibraryMapper.deleteById(otherLibrary.getId());
+			appUserMapper.deleteById(otherUser.getId());
+		}
+	}
+
+	@Test
 	void libraryCanBeDeleted() {
-		LearningLibrary library = learningLibraryService.create("temporary-delete-test");
-		learningLibraryService.delete(library.getId());
+		LearningLibrary library = createLibraryForRequestUser("temporary-delete-test");
+		learningLibraryService.delete(library.getId(), requestUser.getId());
 		assertNull(learningLibraryService.findById(library.getId()));
 	}
 
 	@Test
 	void questionCanBeCreatedAndFoundByLibrary() {
-		LearningLibrary library = learningLibraryService.create("question-api-test");
+		LearningLibrary library = createLibraryForRequestUser("question-api-test");
 		try {
 			CreateQuestionOptionRequest optionA = new CreateQuestionOptionRequest();
 			optionA.setOptionKey("A");
@@ -835,7 +957,7 @@ class BackendApplicationTests {
 
 	@Test
 	void answerRecordCanBeInsertedAndFound() {
-		LearningLibrary library = learningLibraryService.create("answer-record-mapper-test");
+		LearningLibrary library = createLibraryForRequestUser("answer-record-mapper-test");
 		try {
 			Question question = new Question();
 			question.setLibraryId(library.getId());
@@ -864,7 +986,7 @@ class BackendApplicationTests {
 
 	@Test
 	void wrongQuestionCanBeUpdatedAndDeleted() {
-		LearningLibrary library = learningLibraryService.create("wrong-question-mapper-test");
+		LearningLibrary library = createLibraryForRequestUser("wrong-question-mapper-test");
 		try {
 			Question question = new Question();
 			question.setLibraryId(library.getId());
@@ -895,7 +1017,7 @@ class BackendApplicationTests {
 
 	@Test
 	void wrongQuestionRuleWorksAcrossAnswerAttempts() {
-		LearningLibrary library = learningLibraryService.create("practice-rule-test");
+		LearningLibrary library = createLibraryForRequestUser("practice-rule-test");
 		try {
 			Question question = new Question();
 			question.setLibraryId(library.getId());
@@ -935,6 +1057,17 @@ class BackendApplicationTests {
 		request.setQuestionId(questionId);
 		request.setSelectedAnswer(List.of(selectedAnswer));
 		return request;
+	}
+
+	private RequestPostProcessor authenticatedRequest() {
+		return request -> {
+			request.addHeader(HttpHeaders.AUTHORIZATION, "Bearer " + requestUserAccessToken);
+			return request;
+		};
+	}
+
+	private LearningLibrary createLibraryForRequestUser(String name) {
+		return learningLibraryService.create(name, requestUser.getId());
 	}
 
 	private String findAvailableTwoCharacterUsername() {
