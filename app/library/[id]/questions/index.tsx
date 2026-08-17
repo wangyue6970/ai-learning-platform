@@ -2,6 +2,7 @@ import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import { fetchPracticeQuestions, type PracticeQuestion } from '../../../../services/questionApi';
+import { ui } from '../../../../constants/ui';
 
 const questionTypeLabels: Record<PracticeQuestion['type'], string> = {
   single_choice: '单选题',
@@ -60,7 +61,7 @@ export default function QuestionListScreen() {
               pathname: '/library/[id]/questions/[questionId]',
               params: { id, questionId: item.id },
             })}>
-            <Text style={styles.questionType}>{questionTypeLabels[item.type]}</Text>
+            <View style={styles.questionTopRow}><Text style={styles.questionType}>{questionTypeLabels[item.type]}</Text><Text style={styles.chevron}>›</Text></View>
             <Text style={styles.questionStem}>{item.stem}</Text>
             <Text style={styles.questionHint}>点击查看、编辑或删除</Text>
           </Pressable>
@@ -82,13 +83,13 @@ export default function QuestionListScreen() {
 
 const styles = StyleSheet.create({
   screen: {
-    backgroundColor: '#F8FAFC',
+    backgroundColor: ui.colors.background,
     flex: 1,
   },
   content: {
     padding: 20,
     paddingTop: 64,
-    paddingBottom: 40,
+    paddingBottom: 48,
   },
   centerState: {
     alignItems: 'center',
@@ -100,49 +101,52 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   backButtonText: {
-    color: '#2563EB',
+    color: ui.colors.primary,
     fontSize: 16,
   },
   title: {
-    color: '#0F172A',
-    fontSize: 26,
-    fontWeight: '700',
+    color: ui.colors.text,
+    fontSize: 29,
+    fontWeight: '800',
   },
   subtitle: {
-    color: '#64748B',
+    color: ui.colors.mutedText,
     fontSize: 14,
     lineHeight: 21,
     marginTop: 10,
   },
   questionCard: {
-    backgroundColor: '#FFFFFF',
-    borderColor: '#E2E8F0',
-    borderRadius: 12,
+    backgroundColor: ui.colors.surface,
+    borderColor: ui.colors.border,
+    borderRadius: ui.radius.card,
     borderWidth: 1,
     marginTop: 12,
     padding: 16,
+    ...ui.subtleShadow,
   },
+  questionTopRow: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between' },
   questionType: {
-    color: '#2563EB',
+    color: ui.colors.primary,
     fontSize: 13,
     fontWeight: '700',
   },
   questionStem: {
-    color: '#0F172A',
+    color: ui.colors.text,
     fontSize: 16,
     fontWeight: '700',
     lineHeight: 24,
     marginTop: 8,
   },
   questionHint: {
-    color: '#64748B',
+    color: ui.colors.mutedText,
     fontSize: 13,
     marginTop: 10,
   },
   emptyText: {
-    color: '#64748B',
+    color: ui.colors.mutedText,
     fontSize: 15,
     lineHeight: 22,
     marginTop: 28,
   },
+  chevron: { color: ui.colors.disabled, fontSize: 26, lineHeight: 28 },
 });

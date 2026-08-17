@@ -1,6 +1,6 @@
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { ActivityIndicator, Alert, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import {
   confirmAllImportBatchDrafts,
   confirmImportFileDraft,
@@ -8,6 +8,8 @@ import {
   getImportBatchDrafts,
   QuestionDraft,
 } from '../../../../services/importApi';
+import { ui } from '../../../../constants/ui';
+import { useDialog } from '../../../../components/AppDialog';
 
 const questionTypeText = {
   SINGLE_CHOICE: '单选题',
@@ -17,6 +19,7 @@ const questionTypeText = {
 
 export default function BatchQuestionDraftsScreen() {
   const { id, importBatchId } = useLocalSearchParams<{ id: string; importBatchId: string }>();
+  const { showDialog } = useDialog();
   const [drafts, setDrafts] = useState<QuestionDraft[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
@@ -55,7 +58,7 @@ export default function BatchQuestionDraftsScreen() {
       ));
     } catch (confirmError) {
       const message = confirmError instanceof Error ? confirmError.message : '确认入库失败，请稍后重试';
-      Alert.alert('确认失败', message);
+      showDialog({ title: '确认失败', message, tone: 'danger' });
     } finally {
       setActingDraftId(null);
     }
@@ -72,7 +75,7 @@ export default function BatchQuestionDraftsScreen() {
       setDrafts((currentDrafts) => currentDrafts.filter((item) => item.id !== draft.id));
     } catch (discardError) {
       const message = discardError instanceof Error ? discardError.message : '不入库失败，请稍后重试';
-      Alert.alert('不入库失败', message);
+      showDialog({ title: '操作失败', message, tone: 'danger' });
     } finally {
       setActingDraftId(null);
     }
@@ -88,15 +91,16 @@ export default function BatchQuestionDraftsScreen() {
       const result = await confirmAllImportBatchDrafts(id, importBatchId);
       await loadDrafts();
       const failedCount = result.failedDrafts.length;
-      Alert.alert(
-        failedCount === 0 ? '批量入库完成' : '部分题目需要补充',
-        failedCount === 0
+      showDialog({
+        title: failedCount === 0 ? '批量入库完成' : '部分题目需要补充',
+        message: failedCount === 0
           ? `已入库 ${result.confirmedCount} 道题。`
-          : `已入库 ${result.confirmedCount} 道题；${failedCount} 道仍是草稿，请补充答案或检查内容后再确认。`
-      );
+          : `已入库 ${result.confirmedCount} 道题；${failedCount} 道仍是草稿，请补充答案或检查内容后再确认。`,
+        tone: failedCount === 0 ? 'success' : 'warning',
+      });
     } catch (confirmError) {
       const message = confirmError instanceof Error ? confirmError.message : '批量确认入库失败，请稍后重试';
-      Alert.alert('批量确认失败', message);
+      showDialog({ title: '批量确认失败', message, tone: 'danger' });
     } finally {
       setIsConfirmingAll(false);
     }
@@ -128,9 +132,9 @@ export default function BatchQuestionDraftsScreen() {
               </Text>
             </Pressable>
           </View>
-          <Text style={styles.title}>本批次题目草稿</Text>
+          <View style={styles.titleRow}><Text style={styles.title}>确认识别结果</Text><Text style={styles.progressBadge}>待确认 {waitingConfirmationCount}</Text></View>
           <Text style={styles.subtitle}>
-            共 {drafts.length} 道；待确认 {waitingConfirmationCount} 道。确认前可以修改，确认后才会进入正式题库。
+            共识别出 {drafts.length} 道题。可逐题修改；确认后才会进入正式题库。
           </Text>
           {isLoading && <ActivityIndicator color="#2563EB" size="large" style={styles.loading} />}
           {!!error && <Text style={styles.errorText}>{error}</Text>}
@@ -141,7 +145,7 @@ export default function BatchQuestionDraftsScreen() {
       }
       renderItem={({ item: draft, index }) => (
         <View style={styles.draftCard}>
-          <Text style={styles.draftNumber}>第 {index + 1} 题 · {questionTypeText[draft.questionType]}</Text>
+          <View style={styles.draftHeader}><Text style={styles.draftNumber}>第 {index + 1} 题</Text><Text style={styles.typeBadge}>{questionTypeText[draft.questionType]}</Text></View>
           <Text style={styles.stem}>{draft.stem}</Text>
           <Text style={styles.answerText}>
             识别答案：{draft.correctAnswer.length > 0 ? draft.correctAnswer.join('、') : '未识别到答案'}
@@ -183,28 +187,32 @@ export default function BatchQuestionDraftsScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { backgroundColor: '#F8FAFC', flexGrow: 1, padding: 20, paddingBottom: 40, paddingTop: 64 },
-  topActionRow: { alignItems: 'center', flexDirection: 'row', gap: 14 },
-  backText: { color: '#2563EB', fontSize: 16 },
-  confirmAllButton: { backgroundColor: '#2563EB', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8 },
-  confirmAllButtonDisabled: { backgroundColor: '#93C5FD' },
-  confirmAllButtonText: { color: '#FFFFFF', fontSize: 13, fontWeight: '700' },
-  title: { color: '#0F172A', fontSize: 28, fontWeight: '700', marginTop: 24 },
-  subtitle: { color: '#64748B', fontSize: 15, lineHeight: 22, marginTop: 10 },
+  container: { backgroundColor: ui.colors.background, flexGrow: 1, padding: 20, paddingBottom: 48, paddingTop: 58 },
+  topActionRow: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between' },
+  backText: { color: ui.colors.primary, fontSize: 16, fontWeight: '700' },
+  confirmAllButton: { backgroundColor: ui.colors.primary, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10, ...ui.shadow },
+  confirmAllButtonDisabled: { backgroundColor: ui.colors.disabled },
+  confirmAllButtonText: { color: '#FFFFFF', fontSize: 13, fontWeight: '800' },
+  titleRow: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between', marginTop: 25 },
+  title: { color: ui.colors.text, fontSize: 29, fontWeight: '800', letterSpacing: -0.6 },
+  progressBadge: { backgroundColor: ui.colors.primarySoft, borderRadius: 9, color: ui.colors.primary, fontSize: 12, fontWeight: '800', paddingHorizontal: 9, paddingVertical: 5 },
+  subtitle: { color: ui.colors.mutedText, fontSize: 14, lineHeight: 21, marginTop: 10 },
   loading: { marginTop: 30 },
-  errorText: { color: '#B91C1C', fontSize: 15, marginTop: 24 },
-  emptyText: { color: '#64748B', fontSize: 15, marginTop: 24 },
-  draftCard: { backgroundColor: '#FFFFFF', borderColor: '#E2E8F0', borderRadius: 12, borderWidth: 1, marginTop: 16, padding: 16 },
-  draftNumber: { color: '#2563EB', fontSize: 14, fontWeight: '700' },
-  stem: { color: '#0F172A', fontSize: 17, fontWeight: '700', lineHeight: 25, marginTop: 10 },
-  answerText: { color: '#475569', fontSize: 14, marginTop: 14 },
-  confirmedText: { color: '#15803D', fontSize: 15, fontWeight: '700', marginTop: 18 },
+  errorText: { color: ui.colors.danger, fontSize: 15, marginTop: 24 },
+  emptyText: { color: ui.colors.mutedText, fontSize: 15, marginTop: 24 },
+  draftCard: { backgroundColor: ui.colors.surface, borderColor: ui.colors.border, borderRadius: ui.radius.card, borderWidth: 1, marginTop: 14, padding: 16, ...ui.subtleShadow },
+  draftHeader: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between' },
+  draftNumber: { color: ui.colors.mutedText, fontSize: 13, fontWeight: '800' },
+  typeBadge: { backgroundColor: ui.colors.primarySoft, borderRadius: 8, color: ui.colors.primary, fontSize: 12, fontWeight: '800', paddingHorizontal: 8, paddingVertical: 4 },
+  stem: { color: ui.colors.text, fontSize: 17, fontWeight: '800', lineHeight: 25, marginTop: 12 },
+  answerText: { color: ui.colors.mutedText, fontSize: 13, marginTop: 14 },
+  confirmedText: { color: ui.colors.success, fontSize: 14, fontWeight: '800', marginTop: 18 },
   buttonRow: { flexDirection: 'row', gap: 10, marginTop: 18 },
-  editButton: { alignItems: 'center', borderColor: '#2563EB', borderRadius: 8, borderWidth: 1, flex: 1, paddingVertical: 10 },
-  editButtonText: { color: '#2563EB', fontSize: 14, fontWeight: '700' },
-  confirmButton: { alignItems: 'center', backgroundColor: '#2563EB', borderRadius: 8, flex: 1, paddingVertical: 10 },
-  confirmButtonDisabled: { backgroundColor: '#93C5FD' },
-  confirmButtonText: { color: '#FFFFFF', fontSize: 14, fontWeight: '700' },
+  editButton: { alignItems: 'center', borderColor: '#B7CDFC', borderRadius: 11, borderWidth: 1, flex: 1, paddingVertical: 11 },
+  editButtonText: { color: ui.colors.primary, fontSize: 14, fontWeight: '800' },
+  confirmButton: { alignItems: 'center', backgroundColor: ui.colors.primary, borderRadius: 11, flex: 1, paddingVertical: 11 },
+  confirmButtonDisabled: { backgroundColor: ui.colors.disabled },
+  confirmButtonText: { color: '#FFFFFF', fontSize: 14, fontWeight: '800' },
   discardButton: { alignItems: 'center', marginTop: 14, paddingVertical: 4 },
-  discardButtonText: { color: '#B91C1C', fontSize: 14, fontWeight: '700' },
+  discardButtonText: { color: ui.colors.danger, fontSize: 14, fontWeight: '800' },
 });

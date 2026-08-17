@@ -1,12 +1,14 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import {
   getImportFileDrafts,
   QuestionDraft,
   QuestionDraftOption,
   updateImportFileDraft,
 } from '../../../../../services/importApi';
+import { ui } from '../../../../../constants/ui';
+import { useDialog } from '../../../../../components/AppDialog';
 
 type DraftQuestionType = QuestionDraft['questionType'];
 
@@ -22,6 +24,7 @@ export default function EditQuestionDraftScreen() {
     importFileId: string;
     draftId: string;
   }>();
+  const { showDialog } = useDialog();
   const [questionType, setQuestionType] = useState<DraftQuestionType>('SINGLE_CHOICE');
   const [stem, setStem] = useState('');
   const [options, setOptions] = useState<QuestionDraftOption[]>([]);
@@ -90,7 +93,7 @@ export default function EditQuestionDraftScreen() {
     }
 
     if (selectedAnswerKeys.length === 0) {
-      Alert.alert('请先选择正确答案', '直接点击下方正确选项即可，不需要手动输入 A、B、C。');
+      showDialog({ title: '请先选择正确答案', message: '直接点击下方正确选项即可，不需要手动输入 A、B、C。', tone: 'warning' });
       return;
     }
     const normalizedOptions = options.map((option, index) => ({
@@ -109,18 +112,18 @@ export default function EditQuestionDraftScreen() {
         knowledgePoints: [],
         options: normalizedOptions,
       });
-      Alert.alert('草稿已保存', '这道题仍是草稿，尚未进入正式题库。', [
-        {
-          text: '知道了',
-          onPress: () => router.replace({
-            pathname: '/library/[id]/drafts/[importFileId]',
-            params: { id, importFileId },
-          }),
-        },
-      ]);
+      showDialog({
+        title: '草稿已保存',
+        message: '这道题仍是草稿，尚未进入正式题库。',
+        tone: 'success',
+        onPrimary: () => router.replace({
+          pathname: '/library/[id]/drafts/[importFileId]',
+          params: { id, importFileId },
+        }),
+      });
     } catch (saveError) {
       const message = saveError instanceof Error ? saveError.message : '保存草稿失败，请稍后重试';
-      Alert.alert('保存失败', message);
+      showDialog({ title: '保存失败', message, tone: 'danger' });
     } finally {
       setIsSaving(false);
     }
@@ -132,7 +135,7 @@ export default function EditQuestionDraftScreen() {
         <Text style={styles.backText}>返回</Text>
       </Pressable>
       <Text style={styles.title}>编辑题目草稿</Text>
-      <Text style={styles.subtitle}>保存后只更新草稿；最后确认入库前仍可以继续修改。</Text>
+      <Text style={styles.subtitle}>保存只会更新草稿；回到上一页确认入库前仍可再次修改。</Text>
 
       {isLoading && <ActivityIndicator color="#2563EB" size="large" style={styles.loading} />}
       {!!error && <Text style={styles.errorText}>{error}</Text>}
@@ -207,29 +210,29 @@ export default function EditQuestionDraftScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { backgroundColor: '#F8FAFC', flexGrow: 1, padding: 20, paddingBottom: 40, paddingTop: 64 },
-  backText: { color: '#2563EB', fontSize: 16 },
-  title: { color: '#0F172A', fontSize: 28, fontWeight: '700', marginTop: 24 },
-  subtitle: { color: '#64748B', fontSize: 15, lineHeight: 22, marginTop: 10 },
+  container: { backgroundColor: ui.colors.background, flexGrow: 1, padding: 20, paddingBottom: 48, paddingTop: 58 },
+  backText: { color: ui.colors.primary, fontSize: 16, fontWeight: '700' },
+  title: { color: ui.colors.text, fontSize: 29, fontWeight: '800', marginTop: 25 },
+  subtitle: { color: ui.colors.mutedText, fontSize: 14, lineHeight: 21, marginTop: 10 },
   loading: { marginTop: 42 },
-  errorText: { color: '#B91C1C', marginTop: 28 },
-  label: { color: '#0F172A', fontSize: 15, fontWeight: '700', marginTop: 24 },
+  errorText: { color: ui.colors.danger, marginTop: 28 },
+  label: { color: ui.colors.text, fontSize: 15, fontWeight: '800', marginTop: 25 },
   typeRow: { flexDirection: 'row', gap: 8, marginTop: 10 },
-  typeButton: { borderColor: '#CBD5E1', borderRadius: 8, borderWidth: 1, flex: 1, paddingVertical: 10 },
-  typeButtonSelected: { backgroundColor: '#2563EB', borderColor: '#2563EB' },
-  typeButtonText: { color: '#475569', fontSize: 13, fontWeight: '700', textAlign: 'center' },
+  typeButton: { backgroundColor: ui.colors.surface, borderColor: ui.colors.border, borderRadius: 10, borderWidth: 1, flex: 1, paddingVertical: 10 },
+  typeButtonSelected: { backgroundColor: ui.colors.primary, borderColor: ui.colors.primary },
+  typeButtonText: { color: ui.colors.mutedText, fontSize: 12, fontWeight: '800', textAlign: 'center' },
   typeButtonTextSelected: { color: '#FFFFFF' },
-  input: { backgroundColor: '#FFFFFF', borderColor: '#CBD5E1', borderRadius: 8, borderWidth: 1, color: '#0F172A', fontSize: 16, marginTop: 10, minHeight: 48, padding: 12, textAlignVertical: 'top' },
+  input: { backgroundColor: ui.colors.surface, borderColor: ui.colors.border, borderRadius: 12, borderWidth: 1, color: ui.colors.text, fontSize: 16, marginTop: 10, minHeight: 52, padding: 13, textAlignVertical: 'top' },
   optionRow: { alignItems: 'center', flexDirection: 'row', gap: 10, marginTop: 10 },
-  optionKey: { color: '#2563EB', fontSize: 16, fontWeight: '700', width: 20 },
-  optionInput: { backgroundColor: '#FFFFFF', borderColor: '#CBD5E1', borderRadius: 8, borderWidth: 1, color: '#0F172A', flex: 1, fontSize: 16, minHeight: 46, padding: 10, textAlignVertical: 'top' },
-  answerHint: { color: '#64748B', fontSize: 13, marginTop: 8 },
-  answerOption: { alignItems: 'center', backgroundColor: '#FFFFFF', borderColor: '#CBD5E1', borderRadius: 8, borderWidth: 1, flexDirection: 'row', marginTop: 10, padding: 12 },
-  answerOptionSelected: { backgroundColor: '#EFF6FF', borderColor: '#2563EB' },
-  answerOptionKey: { color: '#2563EB', fontSize: 15, fontWeight: '700', marginRight: 10, width: 22 },
-  answerOptionText: { color: '#0F172A', flex: 1, fontSize: 15 },
-  answerOptionTextSelected: { color: '#1D4ED8', fontWeight: '700' },
-  saveButton: { alignItems: 'center', backgroundColor: '#2563EB', borderRadius: 10, marginTop: 30, paddingVertical: 14 },
-  saveButtonDisabled: { backgroundColor: '#93C5FD' },
-  saveButtonText: { color: '#FFFFFF', fontSize: 16, fontWeight: '700' },
+  optionKey: { color: ui.colors.primary, fontSize: 16, fontWeight: '800', width: 20 },
+  optionInput: { backgroundColor: ui.colors.surface, borderColor: ui.colors.border, borderRadius: 12, borderWidth: 1, color: ui.colors.text, flex: 1, fontSize: 16, minHeight: 48, padding: 11, textAlignVertical: 'top' },
+  answerHint: { color: ui.colors.mutedText, fontSize: 13, marginTop: 8 },
+  answerOption: { alignItems: 'center', backgroundColor: ui.colors.surface, borderColor: ui.colors.border, borderRadius: 12, borderWidth: 1, flexDirection: 'row', marginTop: 10, padding: 13 },
+  answerOptionSelected: { backgroundColor: ui.colors.primarySoft, borderColor: ui.colors.primary },
+  answerOptionKey: { color: ui.colors.primary, fontSize: 15, fontWeight: '800', marginRight: 10, width: 22 },
+  answerOptionText: { color: ui.colors.text, flex: 1, fontSize: 15 },
+  answerOptionTextSelected: { color: ui.colors.primaryDark, fontWeight: '800' },
+  saveButton: { alignItems: 'center', backgroundColor: ui.colors.primary, borderRadius: ui.radius.button, marginTop: 32, paddingVertical: 15, ...ui.shadow },
+  saveButtonDisabled: { backgroundColor: ui.colors.disabled },
+  saveButtonText: { color: '#FFFFFF', fontSize: 16, fontWeight: '800' },
 });

@@ -1,10 +1,13 @@
 import { router } from 'expo-router';
 import { useState } from 'react';
-import { Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useAuth } from '../contexts/AuthContext';
+import { ui } from '../constants/ui';
+import { useDialog } from '../components/AppDialog';
 
 export default function LoginScreen() {
   const { login, registerAndLogin } = useAuth();
+  const { showDialog } = useDialog();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [isRegisterMode, setIsRegisterMode] = useState(false);
@@ -14,7 +17,7 @@ export default function LoginScreen() {
     const trimmedUsername = username.trim();
 
     if (!trimmedUsername || !password) {
-      Alert.alert('请输入用户名和密码');
+      showDialog({ title: '请输入用户名和密码', message: '填写完成后再继续登录或注册。', tone: 'warning' });
       return;
     }
 
@@ -34,7 +37,11 @@ export default function LoginScreen() {
       if (registrationSucceeded) {
         setIsRegisterMode(false);
       }
-      Alert.alert(registrationSucceeded ? '请登录' : wasRegisterMode ? '注册失败' : '登录失败', message);
+      showDialog({
+        title: registrationSucceeded ? '请登录' : wasRegisterMode ? '注册失败' : '登录失败',
+        message,
+        tone: registrationSucceeded ? 'success' : 'danger',
+      });
     } finally {
       setIsSubmitting(false);
     }
@@ -42,9 +49,13 @@ export default function LoginScreen() {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>{isRegisterMode ? '注册账号' : '登录 AI 学习助手'}</Text>
+      <View style={styles.brandRow}>
+        <View style={styles.brandMark}><Text style={styles.brandMarkText}>AI</Text></View>
+        <Text style={styles.brandName}>学习助手</Text>
+      </View>
+      <Text style={styles.title}>{isRegisterMode ? '创建你的账号' : '欢迎回来'}</Text>
       <Text style={styles.subtitle}>
-        {isRegisterMode ? '注册后会自动登录。学习库归属限制将在下一步启用。' : '登录后可继续进入学习库和题目页面。'}
+        {isRegisterMode ? '注册后即可创建学习库、导入资料和刷题。' : '登录后继续管理学习库与题目。'}
       </Text>
 
       <Text style={styles.label}>用户名</Text>
@@ -82,13 +93,17 @@ export default function LoginScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { backgroundColor: '#F8FAFC', flex: 1, justifyContent: 'center', padding: 24 },
-  title: { color: '#0F172A', fontSize: 28, fontWeight: '700' },
-  subtitle: { color: '#64748B', fontSize: 15, lineHeight: 22, marginTop: 10 },
-  label: { color: '#334155', fontSize: 14, fontWeight: '700', marginTop: 24 },
-  input: { backgroundColor: '#FFFFFF', borderColor: '#CBD5E1', borderRadius: 10, borderWidth: 1, fontSize: 16, marginTop: 8, padding: 14 },
-  primaryButton: { alignItems: 'center', backgroundColor: '#2563EB', borderRadius: 10, marginTop: 28, padding: 15 },
-  disabledButton: { backgroundColor: '#93C5FD' },
+  container: { backgroundColor: ui.colors.background, flex: 1, justifyContent: 'center', padding: 24 },
+  brandRow: { alignItems: 'center', flexDirection: 'row', marginBottom: 30 },
+  brandMark: { alignItems: 'center', backgroundColor: ui.colors.primary, borderRadius: 13, height: 42, justifyContent: 'center', width: 42, ...ui.shadow },
+  brandMarkText: { color: '#FFFFFF', fontSize: 15, fontWeight: '800' },
+  brandName: { color: ui.colors.text, fontSize: 16, fontWeight: '800', marginLeft: 10 },
+  title: { color: ui.colors.text, fontSize: 31, fontWeight: '800', letterSpacing: -0.8 },
+  subtitle: { color: ui.colors.mutedText, fontSize: 15, lineHeight: 23, marginTop: 11 },
+  label: { color: ui.colors.text, fontSize: 14, fontWeight: '800', marginTop: 28 },
+  input: { backgroundColor: ui.colors.surface, borderColor: ui.colors.border, borderRadius: ui.radius.button, borderWidth: 1, color: ui.colors.text, fontSize: 16, marginTop: 9, paddingHorizontal: 16, paddingVertical: 15, ...ui.subtleShadow },
+  primaryButton: { alignItems: 'center', backgroundColor: ui.colors.primary, borderRadius: ui.radius.button, marginTop: 32, paddingVertical: 16, ...ui.shadow },
+  disabledButton: { backgroundColor: ui.colors.disabled },
   primaryButtonText: { color: '#FFFFFF', fontSize: 16, fontWeight: '700' },
-  switchModeText: { color: '#2563EB', fontSize: 15, fontWeight: '700', marginTop: 20, textAlign: 'center' },
+  switchModeText: { color: ui.colors.primary, fontSize: 15, fontWeight: '800', marginTop: 22, textAlign: 'center' },
 });

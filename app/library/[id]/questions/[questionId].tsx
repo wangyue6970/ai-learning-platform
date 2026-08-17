@@ -1,7 +1,9 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { deleteQuestion, fetchQuestionDetail, type EditableQuestion, updateQuestion } from '../../../../services/questionApi';
+import { ui } from '../../../../constants/ui';
+import { useDialog } from '../../../../components/AppDialog';
 
 const questionTypeLabels = {
   single_choice: '单选题',
@@ -17,6 +19,7 @@ const backendQuestionTypes = {
 
 export default function QuestionDetailScreen() {
   const { questionId } = useLocalSearchParams<{ questionId: string }>();
+  const { showDialog } = useDialog();
   const [question, setQuestion] = useState<EditableQuestion | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isEditing, setIsEditing] = useState(false);
@@ -76,7 +79,7 @@ export default function QuestionDetailScreen() {
       return;
     }
     if (!draftStem.trim() || draftOptions.some((option) => !option.text.trim()) || draftCorrectAnswer.length === 0) {
-      Alert.alert('无法保存', '请填写题干、全部选项，并选择正确答案。');
+      showDialog({ title: '无法保存', message: '请填写题干、全部选项，并选择正确答案。', tone: 'warning' });
       return;
     }
 
@@ -96,7 +99,7 @@ export default function QuestionDetailScreen() {
       setQuestion(updatedQuestion);
       setIsEditing(false);
     } catch {
-      Alert.alert('保存失败', '请检查后端是否已启动后重试。');
+      showDialog({ title: '保存失败', message: '请检查后端是否已启动后重试。', tone: 'danger' });
     } finally {
       setIsSaving(false);
     }
@@ -108,17 +111,22 @@ export default function QuestionDetailScreen() {
       await deleteQuestion(questionId);
       router.back();
     } catch {
-      Alert.alert('删除失败', '请检查后端是否已启动后重试。');
+      showDialog({ title: '删除失败', message: '请检查后端是否已启动后重试。', tone: 'danger' });
     } finally {
       setIsDeleting(false);
     }
   }
 
   function confirmDeleteQuestion() {
-    Alert.alert('删除题目', '删除后将同时清除相关作答记录和错题状态，无法恢复。确定删除吗？', [
-      { text: '取消', style: 'cancel' },
-      { text: '删除', style: 'destructive', onPress: () => void deleteCurrentQuestion() },
-    ]);
+    showDialog({
+      title: '确认删除题目？',
+      message: '删除后会同时清除相关作答记录和错题状态，无法恢复。',
+      tone: 'danger',
+      secondaryLabel: '取消',
+      primaryLabel: '删除',
+      primaryVariant: 'danger',
+      onPrimary: () => void deleteCurrentQuestion(),
+    });
   }
 
   if (error) {
@@ -202,28 +210,28 @@ export default function QuestionDetailScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { backgroundColor: '#FFFFFF', flexGrow: 1, padding: 20, paddingTop: 64 },
-  centerState: { alignItems: 'center', flex: 1, justifyContent: 'center', padding: 24 },
-  backText: { color: '#2563EB', fontSize: 16, marginBottom: 26 },
+  container: { backgroundColor: ui.colors.background, flexGrow: 1, padding: 20, paddingBottom: 48, paddingTop: 58 },
+  centerState: { alignItems: 'center', backgroundColor: ui.colors.background, flex: 1, justifyContent: 'center', padding: 24 },
+  backText: { color: ui.colors.primary, fontSize: 16, fontWeight: '700', marginBottom: 26 },
   titleRow: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between' },
-  type: { color: '#2563EB', fontSize: 14, fontWeight: '700' },
-  editText: { color: '#2563EB', fontSize: 15, fontWeight: '700' },
-  stem: { color: '#0F172A', fontSize: 20, fontWeight: '700', lineHeight: 30, marginTop: 10 },
-  stemInput: { borderColor: '#2563EB', borderRadius: 10, borderWidth: 1, color: '#0F172A', fontSize: 20, fontWeight: '700', lineHeight: 30, marginTop: 10, minHeight: 100, padding: 12, textAlignVertical: 'top' },
-  optionCard: { borderColor: '#CBD5E1', borderRadius: 10, borderWidth: 1, marginTop: 12, padding: 14 },
-  correctOptionCard: { backgroundColor: '#DCFCE7', borderColor: '#16A34A' },
-  optionText: { color: '#334155', fontSize: 16, lineHeight: 24 },
-  optionInput: { color: '#334155', fontSize: 16, lineHeight: 24, padding: 0 },
-  choiceText: { color: '#2563EB', fontSize: 14, fontWeight: '700', marginTop: 10 },
-  correctChoiceText: { color: '#15803D', fontSize: 14, fontWeight: '700', marginTop: 10 },
-  sectionTitle: { color: '#0F172A', fontSize: 16, fontWeight: '700', marginTop: 28 },
-  explanationText: { color: '#334155', fontSize: 16, lineHeight: 25, marginTop: 8 },
-  explanationInput: { borderColor: '#CBD5E1', borderRadius: 10, borderWidth: 1, color: '#334155', fontSize: 16, lineHeight: 25, marginTop: 8, minHeight: 100, padding: 12, textAlignVertical: 'top' },
+  type: { backgroundColor: ui.colors.primarySoft, borderRadius: 8, color: ui.colors.primary, fontSize: 13, fontWeight: '800', overflow: 'hidden', paddingHorizontal: 9, paddingVertical: 5 },
+  editText: { color: ui.colors.primary, fontSize: 15, fontWeight: '800' },
+  stem: { color: ui.colors.text, fontSize: 21, fontWeight: '800', lineHeight: 31, marginTop: 14 },
+  stemInput: { backgroundColor: ui.colors.surface, borderColor: ui.colors.primary, borderRadius: 14, borderWidth: 1, color: ui.colors.text, fontSize: 20, fontWeight: '800', lineHeight: 30, marginTop: 14, minHeight: 100, padding: 14, textAlignVertical: 'top' },
+  optionCard: { backgroundColor: ui.colors.surface, borderColor: ui.colors.border, borderRadius: 14, borderWidth: 1, marginTop: 12, padding: 15, ...ui.subtleShadow },
+  correctOptionCard: { backgroundColor: ui.colors.successSoft, borderColor: ui.colors.success },
+  optionText: { color: ui.colors.text, fontSize: 16, lineHeight: 24 },
+  optionInput: { color: ui.colors.text, fontSize: 16, lineHeight: 24, padding: 0 },
+  choiceText: { color: ui.colors.primary, fontSize: 14, fontWeight: '800', marginTop: 10 },
+  correctChoiceText: { color: ui.colors.success, fontSize: 14, fontWeight: '800', marginTop: 10 },
+  sectionTitle: { color: ui.colors.text, fontSize: 17, fontWeight: '800', marginTop: 28 },
+  explanationText: { color: ui.colors.mutedText, fontSize: 16, lineHeight: 25, marginTop: 9 },
+  explanationInput: { backgroundColor: ui.colors.surface, borderColor: ui.colors.border, borderRadius: 14, borderWidth: 1, color: ui.colors.text, fontSize: 16, lineHeight: 25, marginTop: 9, minHeight: 100, padding: 13, textAlignVertical: 'top' },
   actionRow: { flexDirection: 'row', gap: 12, marginTop: 28 },
-  cancelButton: { alignItems: 'center', borderColor: '#94A3B8', borderRadius: 10, borderWidth: 1, flex: 1, padding: 14 },
-  cancelButtonText: { color: '#475569', fontWeight: '700' },
-  saveButton: { alignItems: 'center', backgroundColor: '#2563EB', borderRadius: 10, flex: 1, padding: 14 },
-  saveButtonText: { color: '#FFFFFF', fontWeight: '700' },
-  deleteButton: { alignItems: 'center', borderColor: '#DC2626', borderRadius: 10, borderWidth: 1, marginTop: 28, padding: 14 },
-  deleteButtonText: { color: '#DC2626', fontWeight: '700' },
+  cancelButton: { alignItems: 'center', backgroundColor: ui.colors.disabledSoft, borderRadius: 13, flex: 1, padding: 14 },
+  cancelButtonText: { color: ui.colors.mutedText, fontWeight: '800' },
+  saveButton: { alignItems: 'center', backgroundColor: ui.colors.primary, borderRadius: 13, flex: 1, padding: 14, ...ui.shadow },
+  saveButtonText: { color: '#FFFFFF', fontWeight: '800' },
+  deleteButton: { alignItems: 'center', backgroundColor: ui.colors.dangerSoft, borderColor: '#FFC7CE', borderRadius: 13, borderWidth: 1, marginTop: 28, padding: 14 },
+  deleteButtonText: { color: ui.colors.danger, fontWeight: '800' },
 });

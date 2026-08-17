@@ -2,7 +2,7 @@ import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useLibraries } from '../../../contexts/LibraryContext';
 import {
   fetchLatestImportBatch,
@@ -10,6 +10,8 @@ import {
   type ImportFileResult,
   uploadImportFiles,
 } from '../../../services/importApi';
+import { ui } from '../../../constants/ui';
+import { useDialog } from '../../../components/AppDialog';
 
 type PendingImportFile = {
   uri: string;
@@ -63,6 +65,7 @@ function getBatchSummary(files: ImportFileResult[]) {
 export default function ImportQuestionsScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { libraries } = useLibraries();
+  const { showDialog } = useDialog();
   const library = libraries.find((item) => item.id === id);
   const [selectedFiles, setSelectedFiles] = useState<PendingImportFile[]>([]);
   const [uploading, setUploading] = useState(false);
@@ -111,7 +114,7 @@ export default function ImportQuestionsScreen() {
   async function captureImage() {
     const permission = await ImagePicker.requestCameraPermissionsAsync();
     if (!permission.granted) {
-      Alert.alert('需要相机权限', '请允许相机权限后再拍照导入。');
+      showDialog({ title: '需要相机权限', message: '请允许相机权限后再拍照导入。', tone: 'warning' });
       return;
     }
 
@@ -127,7 +130,7 @@ export default function ImportQuestionsScreen() {
   async function selectImagesFromLibrary() {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permission.granted) {
-      Alert.alert('需要相册权限', '请允许访问相册后再选择题目图片。');
+      showDialog({ title: '需要相册权限', message: '请允许访问相册后再选择题目图片。', tone: 'warning' });
       return;
     }
 
@@ -159,7 +162,7 @@ export default function ImportQuestionsScreen() {
 
     const wordFile = result.assets[0];
     if (!wordFile.name.toLowerCase().endsWith('.docx')) {
-      Alert.alert('暂不支持该文件', '请选择 .docx 格式的 Word 文件。');
+      showDialog({ title: '暂不支持该文件', message: '请选择 .docx 格式的 Word 文件。', tone: 'warning' });
       return;
     }
 
@@ -179,10 +182,10 @@ export default function ImportQuestionsScreen() {
       setSelectedFiles((currentFiles) =>
         currentFiles.filter((_, index) => batch.files[index]?.status === 'UPLOAD_FAILED')
       );
-      Alert.alert('上传成功', '后台已开始处理。你可以返回学习库，稍后再回来查看进度。');
+      showDialog({ title: '上传成功', message: '后台已开始处理。你可以返回学习库，稍后再回来查看进度。', tone: 'success' });
     } catch (error) {
       const message = error instanceof Error ? error.message : '文件上传失败，请稍后重试';
-      Alert.alert('上传失败', message);
+      showDialog({ title: '上传失败', message, tone: 'danger' });
     } finally {
       setUploading(false);
     }
@@ -198,28 +201,33 @@ export default function ImportQuestionsScreen() {
         <Text style={styles.backText}>返回</Text>
       </Pressable>
       <Text style={styles.title}>导入题目</Text>
-      <Text style={styles.libraryText}>保存到：{library.name}</Text>
-      <Text style={styles.tipText}>上传完成后，后端会继续处理；你可以离开此页面，之后再回来查看。</Text>
+      <Text style={styles.libraryText}>目标学习库 · {library.name}</Text>
+      <Text style={styles.tipText}>资料上传后会在后台继续处理，你可离开此页，稍后再回来查看进度。</Text>
 
       <Text style={styles.sectionTitle}>选择导入方式</Text>
-      <Pressable style={styles.optionCard} onPress={captureImage}>
-        <Text style={styles.optionTitle}>拍照导入</Text>
-        <Text style={styles.optionDescription}>使用手机相机拍摄题目图片</Text>
-      </Pressable>
-      <Pressable style={styles.optionCard} onPress={selectImagesFromLibrary}>
-        <Text style={styles.optionTitle}>从相册选择</Text>
-        <Text style={styles.optionDescription}>一次选择任意多张题目图片</Text>
-      </Pressable>
-      <Pressable style={styles.optionCard} onPress={selectWordDocument}>
-        <Text style={styles.optionTitle}>选择 Word</Text>
-        <Text style={styles.optionDescription}>选择包含题目的 Word 文件</Text>
-      </Pressable>
+      <View style={styles.optionGrid}>
+        <Pressable style={styles.optionCard} onPress={captureImage}>
+          <View style={[styles.optionIcon, styles.cameraIcon]}><Text style={styles.optionIconText}>◉</Text></View>
+          <Text style={styles.optionTitle}>拍照导入</Text>
+          <Text style={styles.optionDescription}>使用相机拍题</Text>
+        </Pressable>
+        <Pressable style={styles.optionCard} onPress={selectImagesFromLibrary}>
+          <View style={[styles.optionIcon, styles.galleryIcon]}><Text style={styles.optionIconText}>▧</Text></View>
+          <Text style={styles.optionTitle}>从相册选择</Text>
+          <Text style={styles.optionDescription}>一次多选图片</Text>
+        </Pressable>
+        <Pressable style={styles.optionCard} onPress={selectWordDocument}>
+          <View style={[styles.optionIcon, styles.wordIcon]}><Text style={styles.optionIconText}>W</Text></View>
+          <Text style={styles.optionTitle}>选择 Word</Text>
+          <Text style={styles.optionDescription}>导入 .docx</Text>
+        </Pressable>
+      </View>
 
       {selectedFiles.length > 0 && (
         <View>
           <Text style={styles.sectionTitle}>待上传文件（{selectedFiles.length}）</Text>
           {selectedFiles.map((file) => (
-            <Text key={file.uri} style={styles.fileName}>{file.displayName}</Text>
+            <View key={file.uri} style={styles.pendingFileRow}><Text style={styles.pendingFileDot}>•</Text><Text style={styles.fileName}>{file.displayName}</Text></View>
           ))}
           <Pressable
             disabled={uploading}
@@ -240,7 +248,7 @@ export default function ImportQuestionsScreen() {
       )}
       {latestBatch && (
         <View>
-          <Text style={styles.progressText}>{getBatchSummary(latestBatch.files)}</Text>
+          <View style={styles.batchSummaryCard}><Text style={styles.progressText}>{getBatchSummary(latestBatch.files)}</Text></View>
           {latestBatch.files.some((file) =>
             ['WAITING_CONFIRMATION', 'CONFIRMED', 'DISCARDED'].includes(file.status)
           ) && (
@@ -255,7 +263,7 @@ export default function ImportQuestionsScreen() {
           )}
           {latestBatch.files.map((file) => (
             <View key={file.id} style={styles.resultCard}>
-              <Text style={styles.fileName}>{file.originalFileName}：{getImportStatusText(file)}</Text>
+              <View style={styles.resultTopRow}><Text numberOfLines={2} style={styles.fileName}>{file.originalFileName}</Text><Text style={styles.statusPill}>{getImportStatusText(file)}</Text></View>
               {file.status === 'WAITING_CONFIRMATION' && (
                 <Pressable
                   style={styles.structureButton}
@@ -275,25 +283,36 @@ export default function ImportQuestionsScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { backgroundColor: '#F8FAFC', flexGrow: 1, padding: 20, paddingBottom: 40, paddingTop: 64 },
-  backText: { color: '#2563EB', fontSize: 16 },
-  title: { color: '#0F172A', fontSize: 28, fontWeight: '700', marginTop: 24 },
-  libraryText: { color: '#475569', fontSize: 16, marginTop: 10 },
-  tipText: { color: '#64748B', fontSize: 14, lineHeight: 21, marginTop: 10 },
-  sectionTitle: { color: '#0F172A', fontSize: 18, fontWeight: '700', marginTop: 32 },
-  optionCard: { backgroundColor: '#FFFFFF', borderColor: '#E2E8F0', borderRadius: 12, borderWidth: 1, marginTop: 12, padding: 18 },
-  optionTitle: { color: '#0F172A', fontSize: 17, fontWeight: '700' },
-  optionDescription: { color: '#64748B', fontSize: 14, marginTop: 6 },
-  fileName: { color: '#334155', fontSize: 14, lineHeight: 21 },
-  resultCard: { backgroundColor: '#FFFFFF', borderRadius: 8, marginTop: 8, padding: 12 },
-  structureButton: { alignItems: 'center', borderColor: '#2563EB', borderRadius: 8, borderWidth: 1, marginTop: 10, paddingVertical: 10 },
-  structureButtonText: { color: '#2563EB', fontSize: 14, fontWeight: '700' },
-  batchDraftButton: { alignItems: 'center', backgroundColor: '#2563EB', borderRadius: 8, marginTop: 12, paddingVertical: 12 },
-  batchDraftButtonText: { color: '#FFFFFF', fontSize: 14, fontWeight: '700' },
-  uploadButton: { alignItems: 'center', backgroundColor: '#2563EB', borderRadius: 10, marginTop: 16, paddingVertical: 14 },
-  uploadButtonDisabled: { backgroundColor: '#93C5FD' },
-  uploadButtonText: { color: '#FFFFFF', fontSize: 15, fontWeight: '700' },
-  progressText: { color: '#64748B', fontSize: 14, lineHeight: 21, marginTop: 10 },
-  errorText: { color: '#DC2626', fontSize: 14, lineHeight: 21, marginTop: 10 },
-  emptyText: { flex: 1, padding: 20, paddingTop: 64 },
+  container: { backgroundColor: ui.colors.background, flexGrow: 1, padding: 20, paddingBottom: 48, paddingTop: 58 },
+  backText: { color: ui.colors.primary, fontSize: 16, fontWeight: '700' },
+  title: { color: ui.colors.text, fontSize: 30, fontWeight: '800', marginTop: 26 },
+  libraryText: { color: ui.colors.primary, fontSize: 14, fontWeight: '800', marginTop: 12 },
+  tipText: { color: ui.colors.mutedText, fontSize: 14, lineHeight: 21, marginTop: 8 },
+  sectionTitle: { color: ui.colors.text, fontSize: 19, fontWeight: '800', marginTop: 30 },
+  optionGrid: { flexDirection: 'row', gap: 10, marginTop: 12 },
+  optionCard: { alignItems: 'center', backgroundColor: ui.colors.surface, borderColor: ui.colors.border, borderRadius: ui.radius.card, borderWidth: 1, flex: 1, minHeight: 150, paddingHorizontal: 8, paddingVertical: 15, ...ui.subtleShadow },
+  optionIcon: { alignItems: 'center', borderRadius: 14, height: 48, justifyContent: 'center', width: 48 },
+  cameraIcon: { backgroundColor: ui.colors.primarySoft },
+  galleryIcon: { backgroundColor: '#F1ECFF' },
+  wordIcon: { backgroundColor: '#E9F6FF' },
+  optionIconText: { color: ui.colors.primary, fontSize: 20, fontWeight: '800' },
+  optionTitle: { color: ui.colors.text, fontSize: 13, fontWeight: '800', marginTop: 11, textAlign: 'center' },
+  optionDescription: { color: ui.colors.mutedText, fontSize: 11, lineHeight: 16, marginTop: 5, textAlign: 'center' },
+  pendingFileRow: { alignItems: 'center', backgroundColor: ui.colors.surface, borderRadius: 12, flexDirection: 'row', marginTop: 8, padding: 12, ...ui.subtleShadow },
+  pendingFileDot: { color: ui.colors.primary, fontSize: 20, marginRight: 8 },
+  fileName: { color: ui.colors.text, flex: 1, fontSize: 13, lineHeight: 19 },
+  batchSummaryCard: { backgroundColor: ui.colors.primarySoft, borderRadius: 12, marginTop: 10, padding: 12 },
+  resultCard: { backgroundColor: ui.colors.surface, borderColor: ui.colors.border, borderRadius: 14, borderWidth: 1, marginTop: 10, padding: 13 },
+  resultTopRow: { alignItems: 'flex-start', flexDirection: 'row', gap: 8 },
+  statusPill: { backgroundColor: ui.colors.primarySoft, borderRadius: 8, color: ui.colors.primary, flexShrink: 1, fontSize: 11, fontWeight: '700', paddingHorizontal: 7, paddingVertical: 4 },
+  structureButton: { alignItems: 'center', borderColor: '#B7CDFC', borderRadius: 10, borderWidth: 1, marginTop: 12, paddingVertical: 10 },
+  structureButtonText: { color: ui.colors.primary, fontSize: 13, fontWeight: '800' },
+  batchDraftButton: { alignItems: 'center', backgroundColor: ui.colors.primary, borderRadius: ui.radius.button, marginTop: 12, paddingVertical: 14, ...ui.shadow },
+  batchDraftButtonText: { color: '#FFFFFF', fontSize: 14, fontWeight: '800' },
+  uploadButton: { alignItems: 'center', backgroundColor: ui.colors.primary, borderRadius: ui.radius.button, marginTop: 16, paddingVertical: 15, ...ui.shadow },
+  uploadButtonDisabled: { backgroundColor: ui.colors.disabled },
+  uploadButtonText: { color: '#FFFFFF', fontSize: 15, fontWeight: '800' },
+  progressText: { color: ui.colors.mutedText, fontSize: 13, lineHeight: 20 },
+  errorText: { color: ui.colors.danger, fontSize: 14, lineHeight: 21, marginTop: 10 },
+  emptyText: { color: ui.colors.mutedText, flex: 1, padding: 20, paddingTop: 64 },
 });

@@ -1,7 +1,7 @@
 import { StatusBar } from 'expo-status-bar';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { Alert, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import {
   fetchPracticeQuestions,
   fetchWrongQuestions,
@@ -9,6 +9,8 @@ import {
   type PracticeQuestion,
   type SubmitAnswerResult,
 } from '../../../../services/questionApi';
+import { ui } from '../../../../constants/ui';
+import { useDialog } from '../../../../components/AppDialog';
 
 const questionTypeLabels: Record<PracticeQuestion['type'], string> = {
   single_choice: '单选题',
@@ -20,6 +22,7 @@ type AnswerStatus = 'correct' | 'wrong';
 
 export default function PracticeScreen() {
   const { id, type, mode } = useLocalSearchParams<{ id: string; type: string; mode?: string }>();
+  const { showDialog } = useDialog();
   const [questions, setQuestions] = useState<PracticeQuestion[]>([]);
   const [selectedOptionIds, setSelectedOptionIds] = useState<string[]>([]);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
@@ -103,7 +106,7 @@ export default function PracticeScreen() {
         [currentQuestion.id]: result.correct ? 'correct' : 'wrong',
       }));
     } catch {
-      Alert.alert('提交失败', '请检查后端是否已启动，再重试。');
+      showDialog({ title: '提交失败', message: '请检查后端是否已启动，再重试。', tone: 'danger' });
     } finally {
       setIsSubmitting(false);
     }
@@ -192,7 +195,7 @@ export default function PracticeScreen() {
           <View style={styles.activeMode}><Text style={styles.activeModeText}>答题</Text></View>
           <View style={styles.inactiveMode}><Text style={styles.inactiveModeText}>背题</Text></View>
         </View>
-        <Pressable style={styles.moreButton} onPress={() => Alert.alert('练习设置', '设置功能将在后续实现。')}>
+        <Pressable style={styles.moreButton} onPress={() => showDialog({ title: '练习设置', message: '这个版本暂未提供额外练习设置。', tone: 'info' })}>
           <Text style={styles.moreButtonText}>•••</Text>
         </Pressable>
       </View>
@@ -230,7 +233,7 @@ export default function PracticeScreen() {
             disabled={isSubmitting || Boolean(answerResult)}
             onPress={() => {
               if (selectedOptionIds.length === 0) {
-                Alert.alert('请先选择答案');
+                showDialog({ title: '请先选择答案', message: '选择一个或多个选项后，再提交答案。', tone: 'warning' });
                 return;
               }
               void submitSelectedAnswer(selectedOptionIds);
@@ -326,42 +329,42 @@ export default function PracticeScreen() {
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: '#FFFFFF' },
-  centerState: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFFFFF' },
-  topBar: { height: 96, paddingTop: 44, paddingHorizontal: 24, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: 1, borderBottomColor: '#E7E7E7' },
-  backButton: { width: 48, height: 40, borderWidth: 1, borderColor: '#DFE2E7', borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
-  backButtonText: { fontSize: 42, fontWeight: '300', color: '#4B5563', lineHeight: 38, marginTop: -6 },
-  modeSwitch: { flexDirection: 'row', backgroundColor: '#F2F3F5', borderRadius: 10, padding: 3 },
-  activeMode: { backgroundColor: '#FFFFFF', borderRadius: 8, paddingHorizontal: 22, paddingVertical: 8 },
+  screen: { flex: 1, backgroundColor: ui.colors.background },
+  centerState: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: ui.colors.background },
+  topBar: { height: 92, paddingTop: 42, paddingHorizontal: 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: ui.colors.surface, borderBottomWidth: 1, borderBottomColor: ui.colors.border },
+  backButton: { width: 42, height: 36, borderWidth: 1, borderColor: ui.colors.border, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
+  backButtonText: { fontSize: 36, fontWeight: '300', color: ui.colors.text, lineHeight: 34, marginTop: -5 },
+  modeSwitch: { flexDirection: 'row', backgroundColor: ui.colors.disabledSoft, borderRadius: 12, padding: 3 },
+  activeMode: { backgroundColor: '#FFFFFF', borderRadius: 9, paddingHorizontal: 17, paddingVertical: 7, ...ui.subtleShadow },
   inactiveMode: { paddingHorizontal: 22, paddingVertical: 8 },
-  activeModeText: { color: '#337FEA', fontSize: 20, fontWeight: '600' },
-  inactiveModeText: { color: '#5D6470', fontSize: 20 },
-  moreButton: { width: 54, height: 40, borderWidth: 1, borderColor: '#E4E6EB', borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
-  moreButtonText: { color: '#252A34', fontSize: 20, fontWeight: '700', letterSpacing: 2 },
+  activeModeText: { color: ui.colors.primary, fontSize: 16, fontWeight: '800' },
+  inactiveModeText: { color: ui.colors.mutedText, fontSize: 16 },
+  moreButton: { width: 42, height: 36, borderWidth: 1, borderColor: ui.colors.border, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
+  moreButtonText: { color: ui.colors.text, fontSize: 15, fontWeight: '800', letterSpacing: 1 },
   content: { paddingBottom: 24 },
-  progressRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 24, paddingVertical: 24, borderBottomWidth: 1, borderBottomColor: '#ECEEF2' },
-  practiceTitle: { color: '#222832', fontSize: 25, fontWeight: '500' },
-  progressText: { color: '#7D8490', fontSize: 25 },
-  currentProgress: { color: '#337FEA', fontWeight: '600' },
-  questionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 18, paddingHorizontal: 24 },
-  typeBadge: { backgroundColor: '#3D87EB', color: '#FFFFFF', borderRadius: 5, overflow: 'hidden', paddingHorizontal: 12, paddingVertical: 6, fontSize: 18 },
-  favoritePlaceholder: { color: '#697181', fontSize: 40, lineHeight: 42 },
-  stem: { color: '#181C23', fontSize: 25, lineHeight: 38, fontWeight: '500', paddingHorizontal: 24, marginTop: 20 },
-  optionList: { paddingHorizontal: 24, marginTop: 30, gap: 16 },
-  optionCard: { minHeight: 88, borderWidth: 1.5, borderRadius: 12, paddingHorizontal: 24, flexDirection: 'row', alignItems: 'center' },
-  optionDefault: { backgroundColor: '#FFFFFF', borderColor: '#D8DCE3' },
-  optionSelected: { backgroundColor: '#EAF2FF', borderColor: '#669CF0' },
-  optionCorrect: { backgroundColor: '#BBF7D0', borderColor: '#16A34A' },
-  optionWrong: { backgroundColor: '#FECACA', borderColor: '#DC2626' },
-  optionKey: { color: '#414958', fontSize: 25, width: 48 },
-  optionText: { color: '#151922', fontSize: 23, flex: 1, lineHeight: 30 },
+  progressRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 20, borderBottomWidth: 1, borderBottomColor: ui.colors.border },
+  practiceTitle: { color: ui.colors.text, fontSize: 19, fontWeight: '800' },
+  progressText: { color: ui.colors.mutedText, fontSize: 16 },
+  currentProgress: { color: ui.colors.primary, fontWeight: '800' },
+  questionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 18, paddingHorizontal: 20 },
+  typeBadge: { backgroundColor: ui.colors.primarySoft, color: ui.colors.primary, borderRadius: 8, overflow: 'hidden', paddingHorizontal: 10, paddingVertical: 5, fontSize: 13, fontWeight: '800' },
+  favoritePlaceholder: { color: ui.colors.mutedText, fontSize: 28, lineHeight: 30 },
+  stem: { color: ui.colors.text, fontSize: 21, lineHeight: 31, fontWeight: '800', paddingHorizontal: 20, marginTop: 17 },
+  optionList: { paddingHorizontal: 20, marginTop: 26, gap: 12 },
+  optionCard: { minHeight: 64, borderWidth: 1, borderRadius: 14, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center' },
+  optionDefault: { backgroundColor: ui.colors.surface, borderColor: ui.colors.border },
+  optionSelected: { backgroundColor: ui.colors.primarySoft, borderColor: ui.colors.primary },
+  optionCorrect: { backgroundColor: ui.colors.successSoft, borderColor: ui.colors.success },
+  optionWrong: { backgroundColor: ui.colors.dangerSoft, borderColor: ui.colors.danger },
+  optionKey: { color: ui.colors.primary, fontSize: 16, fontWeight: '800', width: 34 },
+  optionText: { color: ui.colors.text, fontSize: 16, flex: 1, lineHeight: 23 },
   correctMark: { color: '#15803D', fontSize: 36, fontWeight: '700' },
   wrongMark: { color: '#DC2626', fontSize: 36, fontWeight: '700' },
-  submitButton: { backgroundColor: '#3D87EB', borderRadius: 10, alignItems: 'center', marginHorizontal: 24, marginTop: 28, paddingVertical: 16 },
-  submitButtonText: { color: '#FFFFFF', fontSize: 18, fontWeight: '700' },
-  resultCard: { marginHorizontal: 24, marginTop: 24, padding: 18, borderRadius: 12 },
-  resultCorrect: { backgroundColor: '#F0FCF5' },
-  resultWrong: { backgroundColor: '#FFF5F5' },
+  submitButton: { backgroundColor: ui.colors.primary, borderRadius: ui.radius.button, alignItems: 'center', marginHorizontal: 20, marginTop: 26, paddingVertical: 15, ...ui.shadow },
+  submitButtonText: { color: '#FFFFFF', fontSize: 16, fontWeight: '800' },
+  resultCard: { marginHorizontal: 20, marginTop: 22, padding: 16, borderRadius: ui.radius.card },
+  resultCorrect: { backgroundColor: ui.colors.successSoft },
+  resultWrong: { backgroundColor: ui.colors.dangerSoft },
   resultTitle: { fontSize: 22, fontWeight: '700' },
   resultCorrectText: { color: '#24A761' },
   resultWrongText: { color: '#E33D3D' },
@@ -373,12 +376,12 @@ const styles = StyleSheet.create({
   myWrongAnswer: { color: '#E33D3D', fontSize: 25, fontWeight: '700', marginTop: 6 },
   explanation: { color: '#303744', fontSize: 17, lineHeight: 26, marginTop: 16 },
   statusHint: { color: '#337FEA', fontSize: 16, marginTop: 12 },
-  bottomBar: { minHeight: 92, borderTopWidth: 1, borderTopColor: '#E9ECF1', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-around', paddingBottom: 8, backgroundColor: '#FFFFFF' },
+  bottomBar: { minHeight: 84, borderTopWidth: 1, borderTopColor: ui.colors.border, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-around', paddingBottom: 7, backgroundColor: ui.colors.surface },
   bottomItem: { minWidth: 72, alignItems: 'center' },
   bottomItemDisabled: { minWidth: 72, alignItems: 'center', opacity: 0.48 },
   bottomArrow: { color: '#596273', fontSize: 42, lineHeight: 38 },
   bottomArrowDisabled: { color: '#AAB0BA', fontSize: 42, lineHeight: 38 },
-  answerCardIcon: { color: '#3D87EB', fontSize: 31, lineHeight: 38 },
+  answerCardIcon: { color: ui.colors.primary, fontSize: 28, lineHeight: 34 },
   bottomLabel: { color: '#4A5260', fontSize: 15, marginTop: 2 },
   bottomLabelDisabled: { color: '#9CA3AF', fontSize: 15, marginTop: 2 },
   answerCardOverlay: { flex: 1, backgroundColor: '#F6F8FC' },
