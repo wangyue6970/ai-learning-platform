@@ -1,8 +1,8 @@
 {
   "expo": {
-    "name": "AIStudyApp",
-    "slug": "AIStudyApp",
-    "scheme": "aistudyapp",
+    "name": "AI学习助手",
+    "slug": "ai-learning-platform",
+    "scheme": "ai-learning-platform",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -17,6 +17,8 @@
       "supportsTablet": true
     },
     "android": {
+      "package": "com.wangyue.ailearningplatform",
+      "versionCode": 1,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
@@ -30,6 +32,12 @@
     "plugins": [
       "expo-router",
       "expo-secure-store"
-    ]
+    ],
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "4500eb4c-edef-4758-9324-88b5f034dc64"
+      }
+    }
   }
 }
