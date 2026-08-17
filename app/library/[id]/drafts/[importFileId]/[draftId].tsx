@@ -25,7 +25,7 @@ export default function EditQuestionDraftScreen() {
   const [questionType, setQuestionType] = useState<DraftQuestionType>('SINGLE_CHOICE');
   const [stem, setStem] = useState('');
   const [options, setOptions] = useState<QuestionDraftOption[]>([]);
-  const [answerText, setAnswerText] = useState('');
+  const [selectedAnswerKeys, setSelectedAnswerKeys] = useState<string[]>([]);
   const [explanation, setExplanation] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -45,8 +45,16 @@ export default function EditQuestionDraftScreen() {
         }
         setQuestionType(foundDraft.questionType);
         setStem(foundDraft.stem);
-        setOptions(foundDraft.options);
-        setAnswerText(foundDraft.correctAnswer.join(','));
+        const editableOptions = foundDraft.questionType === 'TRUE_FALSE' && foundDraft.options.length === 0
+          ? [
+              { optionKey: 'TRUE', content: '正确', sortOrder: 1 },
+              { optionKey: 'FALSE', content: '错误', sortOrder: 2 },
+            ]
+          : foundDraft.options;
+        setOptions(editableOptions);
+        setSelectedAnswerKeys(foundDraft.correctAnswer.filter((answer) =>
+          editableOptions.some((option) => option.optionKey === answer)
+        ));
         setExplanation(foundDraft.explanation || '');
       } catch (loadError) {
         setError(loadError instanceof Error ? loadError.message : '读取题目草稿失败，请稍后重试');
@@ -64,15 +72,27 @@ export default function EditQuestionDraftScreen() {
     ));
   }
 
+  function toggleCorrectAnswer(optionKey: string) {
+    if (questionType !== 'MULTIPLE_CHOICE') {
+      setSelectedAnswerKeys([optionKey]);
+      return;
+    }
+
+    setSelectedAnswerKeys((currentAnswers) => currentAnswers.includes(optionKey)
+      ? currentAnswers.filter((answer) => answer !== optionKey)
+      : [...currentAnswers, optionKey]
+    );
+  }
+
   async function saveDraft() {
     if (isSaving) {
       return;
     }
 
-    const correctAnswer = answerText
-      .split(',')
-      .map((answer) => answer.trim())
-      .filter(Boolean);
+    if (selectedAnswerKeys.length === 0) {
+      Alert.alert('请先选择正确答案', '直接点击下方正确选项即可，不需要手动输入 A、B、C。');
+      return;
+    }
     const normalizedOptions = options.map((option, index) => ({
       ...option,
       content: option.content?.trim() || '',
@@ -84,7 +104,7 @@ export default function EditQuestionDraftScreen() {
       await updateImportFileDraft(id, importFileId, draftId, {
         questionType,
         stem: stem.trim(),
-        correctAnswer,
+        correctAnswer: selectedAnswerKeys,
         explanation: explanation.trim() || null,
         knowledgePoints: [],
         options: normalizedOptions,
@@ -150,13 +170,26 @@ export default function EditQuestionDraftScreen() {
           ))}
 
           <Text style={styles.label}>正确答案</Text>
-          <TextInput
-            autoCapitalize="characters"
-            placeholder="例如：B；多选填 A,C"
-            style={styles.input}
-            value={answerText}
-            onChangeText={setAnswerText}
-          />
+          <Text style={styles.answerHint}>
+            {questionType === 'MULTIPLE_CHOICE' ? '多选题可点击多个选项。' : '点击一个选项即可设为正确答案。'}
+          </Text>
+          {options.map((option) => {
+            const isSelected = selectedAnswerKeys.includes(option.optionKey);
+            return (
+              <Pressable
+                key={`answer-${option.optionKey}`}
+                style={[styles.answerOption, isSelected && styles.answerOptionSelected]}
+                onPress={() => toggleCorrectAnswer(option.optionKey)}
+              >
+                <Text style={[styles.answerOptionKey, isSelected && styles.answerOptionTextSelected]}>
+                  {isSelected ? '✓' : option.optionKey}
+                </Text>
+                <Text style={[styles.answerOptionText, isSelected && styles.answerOptionTextSelected]}>
+                  {option.content || '未填写选项内容'}
+                </Text>
+              </Pressable>
+            );
+          })}
 
           <Text style={styles.label}>解析（可留空）</Text>
           <TextInput multiline style={styles.input} value={explanation} onChangeText={setExplanation} />
@@ -190,6 +223,12 @@ const styles = StyleSheet.create({
   optionRow: { alignItems: 'center', flexDirection: 'row', gap: 10, marginTop: 10 },
   optionKey: { color: '#2563EB', fontSize: 16, fontWeight: '700', width: 20 },
   optionInput: { backgroundColor: '#FFFFFF', borderColor: '#CBD5E1', borderRadius: 8, borderWidth: 1, color: '#0F172A', flex: 1, fontSize: 16, minHeight: 46, padding: 10, textAlignVertical: 'top' },
+  answerHint: { color: '#64748B', fontSize: 13, marginTop: 8 },
+  answerOption: { alignItems: 'center', backgroundColor: '#FFFFFF', borderColor: '#CBD5E1', borderRadius: 8, borderWidth: 1, flexDirection: 'row', marginTop: 10, padding: 12 },
+  answerOptionSelected: { backgroundColor: '#EFF6FF', borderColor: '#2563EB' },
+  answerOptionKey: { color: '#2563EB', fontSize: 15, fontWeight: '700', marginRight: 10, width: 22 },
+  answerOptionText: { color: '#0F172A', flex: 1, fontSize: 15 },
+  answerOptionTextSelected: { color: '#1D4ED8', fontWeight: '700' },
   saveButton: { alignItems: 'center', backgroundColor: '#2563EB', borderRadius: 10, marginTop: 30, paddingVertical: 14 },
   saveButtonDisabled: { backgroundColor: '#93C5FD' },
   saveButtonText: { color: '#FFFFFF', fontSize: 16, fontWeight: '700' },

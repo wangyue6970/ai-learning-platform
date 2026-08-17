@@ -1,6 +1,7 @@
 package com.wangyue.backend.controller;
 
 import com.wangyue.backend.dto.ImportBatchResponse;
+import com.wangyue.backend.dto.BatchDraftConfirmResponse;
 import com.wangyue.backend.dto.ImportFileResponse;
 import com.wangyue.backend.dto.QuestionDraftResponse;
 import com.wangyue.backend.dto.UpdateQuestionDraftRequest;
@@ -65,6 +66,15 @@ public class ImportController {
         @AuthenticationPrincipal Long currentUserId
     ) {
         return importService.findBatchDrafts(libraryId, importBatchId, currentUserId);
+    }
+
+    @PostMapping("/{importBatchId}/drafts/confirm-all")
+    public BatchDraftConfirmResponse confirmAllDrafts(
+        @PathVariable Long libraryId,
+        @PathVariable Long importBatchId,
+        @AuthenticationPrincipal Long currentUserId
+    ) {
+        return importService.confirmAllDrafts(libraryId, importBatchId, currentUserId);
     }
 
     @GetMapping("/files/{importFileId}/drafts")

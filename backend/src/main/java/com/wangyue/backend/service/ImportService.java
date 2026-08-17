@@ -2,6 +2,7 @@ package com.wangyue.backend.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.wangyue.backend.dto.ImportBatchResponse;
+import com.wangyue.backend.dto.BatchDraftConfirmResponse;
 import com.wangyue.backend.dto.ImportFileResponse;
 import com.wangyue.backend.dto.QuestionDraftOptionResponse;
 import com.wangyue.backend.dto.QuestionDraftResponse;
@@ -223,6 +224,41 @@ public class ImportService {
         return toDraftResponse(draft);
     }
 
+    /**
+     * A batch is deliberately not one all-or-nothing transaction. Every draft
+     * is confirmed through the existing transactional rule, so a malformed
+     * draft does not prevent other reviewed drafts from entering the bank.
+     */
+    public BatchDraftConfirmResponse confirmAllDrafts(Long libraryId, Long importBatchId) {
+        findOwnedImportBatch(libraryId, importBatchId);
+        BatchDraftConfirmResponse response = new BatchDraftConfirmResponse();
+        List<ImportFile> files = importFileMapper.selectList(new LambdaQueryWrapper<ImportFile>()
+            .eq(ImportFile::getImportBatchId, importBatchId)
+            .orderByAsc(ImportFile::getId));
+
+        for (ImportFile file : files) {
+            List<QuestionDraft> waitingDrafts = questionDraftMapper.selectList(new LambdaQueryWrapper<QuestionDraft>()
+                .eq(QuestionDraft::getImportFileId, file.getId())
+                .eq(QuestionDraft::getStatus, "WAITING_CONFIRMATION")
+                .orderByAsc(QuestionDraft::getSortOrder)
+                .orderByAsc(QuestionDraft::getId));
+
+            for (QuestionDraft draft : waitingDrafts) {
+                try {
+                    questionDraftService.confirmDraft(libraryId, file.getId(), draft.getId());
+                    response.addConfirmedDraft();
+                } catch (IllegalArgumentException | IllegalStateException exception) {
+                    response.addFailedDraft(draft.getId(), exception.getMessage());
+                }
+            }
+
+            if (!waitingDrafts.isEmpty()) {
+                cleanUpSourceFileWhenNoDraftNeedsDecision(file);
+            }
+        }
+        return response;
+    }
+
     public void discardDraft(Long libraryId, Long importFileId, Long draftId) {
         ImportFile importFile = findOwnedImportFile(libraryId, importFileId);
         questionDraftService.discardDraft(libraryId, importFileId, draftId);
@@ -438,6 +474,13 @@ public class ImportService {
     ) {
         requireCurrentUserOwnsLibrary(libraryId, currentUserId);
         return confirmDraft(libraryId, importFileId, draftId);
+    }
+
+    public BatchDraftConfirmResponse confirmAllDrafts(
+        Long libraryId, Long importBatchId, Long currentUserId
+    ) {
+        requireCurrentUserOwnsLibrary(libraryId, currentUserId);
+        return confirmAllDrafts(libraryId, importBatchId);
     }
 
     public void discardDraft(Long libraryId, Long importFileId, Long draftId, Long currentUserId) {

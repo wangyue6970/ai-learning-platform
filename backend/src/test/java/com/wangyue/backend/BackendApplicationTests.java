@@ -13,6 +13,7 @@ import com.wangyue.backend.dto.CreateQuestionOptionRequest;
 import com.wangyue.backend.dto.CreateQuestionRequest;
 import com.wangyue.backend.dto.RegisterRequest;
 import com.wangyue.backend.dto.ImportFileResponse;
+import com.wangyue.backend.dto.BatchDraftConfirmResponse;
 import com.wangyue.backend.dto.RecognizedQuestion;
 import com.wangyue.backend.dto.RecognizedQuestionOption;
 import com.wangyue.backend.dto.SubmitAnswerRequest;
@@ -759,6 +760,59 @@ class BackendApplicationTests {
 					Files.deleteIfExists(Path.of(importFile.getStoredFilePath()));
 				}
 			}
+			learningLibraryMapper.deleteById(library.getId());
+		}
+	}
+
+	@Test
+	void batchConfirmationKeepsInvalidDraftsAndConfirmsTheRest() {
+		LearningLibrary library = createLibraryForRequestUser("batch-confirm-" + System.nanoTime());
+		ImportBatch batch = new ImportBatch();
+		batch.setLibraryId(library.getId());
+		batch.setStatus("READY_FOR_CONFIRMATION");
+		importBatchMapper.insert(batch);
+		ImportFile importFile = new ImportFile();
+		importFile.setImportBatchId(batch.getId());
+		importFile.setOriginalFileName("batch-confirm.png");
+		importFile.setFileType("image/png");
+		importFile.setFileSizeBytes(1L);
+		importFile.setStatus("WAITING_CONFIRMATION");
+		importFileMapper.insert(importFile);
+
+		try {
+			RecognizedQuestionOption optionA = new RecognizedQuestionOption();
+			optionA.setOptionKey("A");
+			optionA.setContent("选项 A");
+			RecognizedQuestionOption optionB = new RecognizedQuestionOption();
+			optionB.setOptionKey("B");
+			optionB.setContent("选项 B");
+			RecognizedQuestion validDraft = new RecognizedQuestion();
+			validDraft.setQuestionType("SINGLE_CHOICE");
+			validDraft.setStem("有答案的题目");
+			validDraft.setOptions(List.of(optionA, optionB));
+			validDraft.setCorrectAnswer(List.of("A"));
+			RecognizedQuestion missingAnswerDraft = new RecognizedQuestion();
+			missingAnswerDraft.setQuestionType("SINGLE_CHOICE");
+			missingAnswerDraft.setStem("待补答案的题目");
+			missingAnswerDraft.setOptions(List.of(optionA, optionB));
+			missingAnswerDraft.setCorrectAnswer(List.of());
+			questionDraftService.saveRecognitionResult(
+				importFile.getId(), "批量确认测试", List.of(validDraft, missingAnswerDraft)
+			);
+
+			BatchDraftConfirmResponse response = importService.confirmAllDrafts(
+				library.getId(), batch.getId(), requestUser.getId()
+			);
+			assertEquals(1, response.getConfirmedCount());
+			assertEquals(1, response.getFailedDrafts().size());
+			assertEquals("确认入库前必须填写正确答案", response.getFailedDrafts().get(0).getMessage());
+			assertEquals(1, questionMapper.selectCount(
+				new LambdaQueryWrapper<Question>().eq(Question::getLibraryId, library.getId())
+			));
+			assertEquals(1, questionDraftMapper.selectCount(new LambdaQueryWrapper<QuestionDraft>()
+				.eq(QuestionDraft::getImportFileId, importFile.getId())
+				.eq(QuestionDraft::getStatus, "WAITING_CONFIRMATION")));
+		} finally {
 			learningLibraryMapper.deleteById(library.getId());
 		}
 	}

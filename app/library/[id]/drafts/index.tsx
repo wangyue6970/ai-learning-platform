@@ -1,7 +1,13 @@
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { ActivityIndicator, Alert, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
-import { confirmImportFileDraft, discardImportFileDraft, getImportBatchDrafts, QuestionDraft } from '../../../../services/importApi';
+import {
+  confirmAllImportBatchDrafts,
+  confirmImportFileDraft,
+  discardImportFileDraft,
+  getImportBatchDrafts,
+  QuestionDraft,
+} from '../../../../services/importApi';
 
 const questionTypeText = {
   SINGLE_CHOICE: '单选题',
@@ -15,6 +21,7 @@ export default function BatchQuestionDraftsScreen() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
   const [actingDraftId, setActingDraftId] = useState<number | null>(null);
+  const [isConfirmingAll, setIsConfirmingAll] = useState(false);
 
   const loadDrafts = useCallback(async () => {
     setIsLoading(true);
@@ -36,6 +43,9 @@ export default function BatchQuestionDraftsScreen() {
   );
 
   async function confirmDraft(draft: QuestionDraft) {
+    if (isConfirmingAll) {
+      return;
+    }
     setActingDraftId(draft.id);
 
     try {
@@ -52,6 +62,9 @@ export default function BatchQuestionDraftsScreen() {
   }
 
   async function discardDraft(draft: QuestionDraft) {
+    if (isConfirmingAll) {
+      return;
+    }
     setActingDraftId(draft.id);
 
     try {
@@ -65,6 +78,30 @@ export default function BatchQuestionDraftsScreen() {
     }
   }
 
+  async function confirmAllDrafts() {
+    if (isConfirmingAll || waitingConfirmationCount === 0) {
+      return;
+    }
+
+    setIsConfirmingAll(true);
+    try {
+      const result = await confirmAllImportBatchDrafts(id, importBatchId);
+      await loadDrafts();
+      const failedCount = result.failedDrafts.length;
+      Alert.alert(
+        failedCount === 0 ? '批量入库完成' : '部分题目需要补充',
+        failedCount === 0
+          ? `已入库 ${result.confirmedCount} 道题。`
+          : `已入库 ${result.confirmedCount} 道题；${failedCount} 道仍是草稿，请补充答案或检查内容后再确认。`
+      );
+    } catch (confirmError) {
+      const message = confirmError instanceof Error ? confirmError.message : '批量确认入库失败，请稍后重试';
+      Alert.alert('批量确认失败', message);
+    } finally {
+      setIsConfirmingAll(false);
+    }
+  }
+
   const waitingConfirmationCount = drafts.filter((draft) => draft.status !== 'CONFIRMED').length;
 
   return (
@@ -74,9 +111,23 @@ export default function BatchQuestionDraftsScreen() {
       keyExtractor={(draft) => String(draft.id)}
       ListHeaderComponent={
         <View>
-          <Pressable onPress={() => router.back()}>
-            <Text style={styles.backText}>返回</Text>
-          </Pressable>
+          <View style={styles.topActionRow}>
+            <Pressable onPress={() => router.back()}>
+              <Text style={styles.backText}>返回</Text>
+            </Pressable>
+            <Pressable
+              disabled={waitingConfirmationCount === 0 || isConfirmingAll}
+              style={[
+                styles.confirmAllButton,
+                (waitingConfirmationCount === 0 || isConfirmingAll) && styles.confirmAllButtonDisabled,
+              ]}
+              onPress={() => void confirmAllDrafts()}
+            >
+              <Text style={styles.confirmAllButtonText}>
+                {isConfirmingAll ? '正在入库…' : `全部入库（${waitingConfirmationCount}）`}
+              </Text>
+            </Pressable>
+          </View>
           <Text style={styles.title}>本批次题目草稿</Text>
           <Text style={styles.subtitle}>
             共 {drafts.length} 道；待确认 {waitingConfirmationCount} 道。确认前可以修改，确认后才会进入正式题库。
@@ -108,8 +159,8 @@ export default function BatchQuestionDraftsScreen() {
                 <Text style={styles.editButtonText}>编辑草稿</Text>
               </Pressable>
               <Pressable
-                disabled={actingDraftId === draft.id}
-                style={[styles.confirmButton, actingDraftId === draft.id && styles.confirmButtonDisabled]}
+                disabled={actingDraftId === draft.id || isConfirmingAll}
+                style={[styles.confirmButton, (actingDraftId === draft.id || isConfirmingAll) && styles.confirmButtonDisabled]}
                 onPress={() => void confirmDraft(draft)}>
                 <Text style={styles.confirmButtonText}>
                   {actingDraftId === draft.id ? '正在处理…' : '确认入库'}
@@ -119,7 +170,7 @@ export default function BatchQuestionDraftsScreen() {
           )}
           {draft.status !== 'CONFIRMED' && (
             <Pressable
-              disabled={actingDraftId === draft.id}
+              disabled={actingDraftId === draft.id || isConfirmingAll}
               style={styles.discardButton}
               onPress={() => void discardDraft(draft)}>
               <Text style={styles.discardButtonText}>不入库</Text>
@@ -133,7 +184,11 @@ export default function BatchQuestionDraftsScreen() {
 
 const styles = StyleSheet.create({
   container: { backgroundColor: '#F8FAFC', flexGrow: 1, padding: 20, paddingBottom: 40, paddingTop: 64 },
+  topActionRow: { alignItems: 'center', flexDirection: 'row', gap: 14 },
   backText: { color: '#2563EB', fontSize: 16 },
+  confirmAllButton: { backgroundColor: '#2563EB', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8 },
+  confirmAllButtonDisabled: { backgroundColor: '#93C5FD' },
+  confirmAllButtonText: { color: '#FFFFFF', fontSize: 13, fontWeight: '700' },
   title: { color: '#0F172A', fontSize: 28, fontWeight: '700', marginTop: 24 },
   subtitle: { color: '#64748B', fontSize: 15, lineHeight: 22, marginTop: 10 },
   loading: { marginTop: 30 },

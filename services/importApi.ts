@@ -54,6 +54,11 @@ export type UpdateQuestionDraftRequest = {
   options: QuestionDraftOption[];
 };
 
+export type BatchDraftConfirmResult = {
+  confirmedCount: number;
+  failedDrafts: Array<{ draftId: number; message: string }>;
+};
+
 type LocalImportFile = {
   uri: string;
 };
@@ -256,6 +261,35 @@ export async function confirmImportFileDraft(
       message = errorBody.message || message;
     } catch {
       // Keep the default error message when the server does not return JSON.
+    }
+    throw new Error(message);
+  }
+
+  return response.json();
+}
+
+export async function confirmAllImportBatchDrafts(
+  libraryId: string,
+  importBatchId: string
+): Promise<BatchDraftConfirmResult> {
+  let response: Response;
+
+  try {
+    response = await apiFetch(
+      `/api/libraries/${libraryId}/import-batches/${importBatchId}/drafts/confirm-all`,
+      { method: 'POST' }
+    );
+  } catch {
+    throw new Error('无法连接批量确认服务，请检查电脑后端是否正在运行');
+  }
+
+  if (!response.ok) {
+    let message = '批量确认入库失败，请稍后重试';
+    try {
+      const errorBody: { message?: string } = await response.json();
+      message = errorBody.message || message;
+    } catch {
+      // 后端没有返回可读取的错误内容时，使用默认提示。
     }
     throw new Error(message);
   }
