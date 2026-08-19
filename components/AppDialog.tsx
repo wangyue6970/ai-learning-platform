@@ -101,9 +101,9 @@ export function useDialog() {
 }
 
 const styles = StyleSheet.create({
-  backdrop: { alignItems: 'center', backgroundColor: ui.colors.overlay, flex: 1, justifyContent: 'center', padding: 26 },
-  card: { alignItems: 'center', backgroundColor: ui.colors.surface, borderRadius: 24, maxWidth: 420, padding: 24, width: '100%', ...ui.shadow },
-  icon: { alignItems: 'center', backgroundColor: ui.colors.primarySoft, borderRadius: 28, height: 56, justifyContent: 'center', width: 56 },
+  backdrop: { alignItems: 'center', backgroundColor: 'rgba(16, 33, 61, 0.5)', flex: 1, justifyContent: 'center', padding: 26 },
+  card: { alignItems: 'center', backgroundColor: ui.colors.surface, borderRadius: 26, maxWidth: 400, padding: 26, width: '100%', ...ui.shadow },
+  icon: { alignItems: 'center', backgroundColor: ui.colors.primarySoft, borderRadius: 32, height: 64, justifyContent: 'center', width: 64 },
   successIcon: { backgroundColor: ui.colors.successSoft },
   warningIcon: { backgroundColor: ui.colors.warningSoft },
   dangerIcon: { backgroundColor: ui.colors.dangerSoft },
@@ -111,14 +111,14 @@ const styles = StyleSheet.create({
   successIconText: { color: ui.colors.success },
   warningIconText: { color: ui.colors.warning },
   dangerIconText: { color: ui.colors.danger },
-  title: { color: ui.colors.text, fontSize: 21, fontWeight: '800', marginTop: 16, textAlign: 'center' },
-  message: { color: ui.colors.mutedText, fontSize: 15, lineHeight: 23, marginTop: 10, textAlign: 'center' },
-  buttonRow: { flexDirection: 'row', gap: 10, marginTop: 24, width: '100%' },
-  primaryButton: { alignItems: 'center', backgroundColor: ui.colors.primary, borderRadius: 13, justifyContent: 'center', minHeight: 48, ...ui.shadow },
+  title: { color: ui.colors.text, fontSize: 20, fontWeight: '800', marginTop: 16, textAlign: 'center' },
+  message: { color: ui.colors.mutedText, fontSize: 14, lineHeight: 22, marginTop: 10, textAlign: 'center' },
+  buttonRow: { flexDirection: 'row', gap: 10, marginTop: 25, width: '100%' },
+  primaryButton: { alignItems: 'center', backgroundColor: ui.colors.primary, borderRadius: 12, justifyContent: 'center', minHeight: 50, ...ui.shadow },
   dangerButton: { backgroundColor: ui.colors.danger },
   halfButton: { flex: 1 },
   fullButton: { width: '100%' },
   primaryButtonText: { color: '#FFFFFF', fontSize: 15, fontWeight: '800' },
-  secondaryButton: { alignItems: 'center', backgroundColor: ui.colors.disabledSoft, borderRadius: 13, flex: 1, justifyContent: 'center', minHeight: 48 },
+  secondaryButton: { alignItems: 'center', backgroundColor: ui.colors.disabledSoft, borderRadius: 12, flex: 1, justifyContent: 'center', minHeight: 50 },
   secondaryButtonText: { color: ui.colors.mutedText, fontSize: 15, fontWeight: '800' },
 });

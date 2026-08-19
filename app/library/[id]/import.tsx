@@ -197,37 +197,49 @@ export default function ImportQuestionsScreen() {
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
-      <Pressable onPress={() => router.back()}>
-        <Text style={styles.backText}>返回</Text>
-      </Pressable>
-      <Text style={styles.title}>导入题目</Text>
-      <Text style={styles.libraryText}>目标学习库 · {library.name}</Text>
-      <Text style={styles.tipText}>资料上传后会在后台继续处理，你可离开此页，稍后再回来查看进度。</Text>
+      <View style={styles.topBar}>
+        <Pressable style={styles.backButton} onPress={() => router.back()}>
+          <Text style={styles.backText}>‹</Text>
+        </Pressable>
+        <Text style={styles.topTitle}>导入题目</Text>
+        <View style={styles.topSpacer} />
+      </View>
+      <View style={styles.pageIntro}>
+        <Text style={styles.libraryText}>目标学习库 · {library.name}</Text>
+        <Text style={styles.tipText}>可一次选择多张图片或一个 Word 文档，后台会继续处理。</Text>
+      </View>
 
       <Text style={styles.sectionTitle}>选择导入方式</Text>
       <View style={styles.optionGrid}>
         <Pressable style={styles.optionCard} onPress={captureImage}>
           <View style={[styles.optionIcon, styles.cameraIcon]}><Text style={styles.optionIconText}>◉</Text></View>
           <Text style={styles.optionTitle}>拍照导入</Text>
-          <Text style={styles.optionDescription}>使用相机拍题</Text>
+          <Text style={styles.optionDescription}>拍摄题目图片</Text>
         </Pressable>
         <Pressable style={styles.optionCard} onPress={selectImagesFromLibrary}>
           <View style={[styles.optionIcon, styles.galleryIcon]}><Text style={styles.optionIconText}>▧</Text></View>
           <Text style={styles.optionTitle}>从相册选择</Text>
-          <Text style={styles.optionDescription}>一次多选图片</Text>
+          <Text style={styles.optionDescription}>一次选择多张</Text>
         </Pressable>
         <Pressable style={styles.optionCard} onPress={selectWordDocument}>
           <View style={[styles.optionIcon, styles.wordIcon]}><Text style={styles.optionIconText}>W</Text></View>
           <Text style={styles.optionTitle}>选择 Word</Text>
-          <Text style={styles.optionDescription}>导入 .docx</Text>
+          <Text style={styles.optionDescription}>选择 .docx 文档</Text>
         </Pressable>
       </View>
 
       {selectedFiles.length > 0 && (
         <View>
-          <Text style={styles.sectionTitle}>待上传文件（{selectedFiles.length}）</Text>
+          <View style={styles.fileSectionHeading}>
+            <Text style={styles.sectionTitle}>导入文件（{selectedFiles.length}）</Text>
+            <Text style={styles.fileSectionHint}>待上传</Text>
+          </View>
           {selectedFiles.map((file) => (
-            <View key={file.uri} style={styles.pendingFileRow}><Text style={styles.pendingFileDot}>•</Text><Text style={styles.fileName}>{file.displayName}</Text></View>
+            <View key={file.uri} style={styles.pendingFileRow}>
+              <View style={styles.fileIcon}><Text style={styles.fileIconText}>{file.displayName.toLowerCase().endsWith('.docx') ? 'W' : '▧'}</Text></View>
+              <Text numberOfLines={2} style={styles.fileName}>{file.displayName}</Text>
+              <Text style={styles.pendingPill}>待上传</Text>
+            </View>
           ))}
           <Pressable
             disabled={uploading}
@@ -240,7 +252,7 @@ export default function ImportQuestionsScreen() {
         </View>
       )}
 
-      <Text style={styles.sectionTitle}>最近导入批次</Text>
+      <Text style={styles.sectionTitle}>导入记录</Text>
       {isLoadingBatch && !latestBatch && <Text style={styles.progressText}>正在读取导入进度…</Text>}
       {batchLoadError && <Text style={styles.errorText}>{batchLoadError}</Text>}
       {!isLoadingBatch && !batchLoadError && !latestBatch && (
@@ -248,7 +260,10 @@ export default function ImportQuestionsScreen() {
       )}
       {latestBatch && (
         <View>
-          <View style={styles.batchSummaryCard}><Text style={styles.progressText}>{getBatchSummary(latestBatch.files)}</Text></View>
+          <View style={styles.batchSummaryCard}>
+            <Text style={styles.batchSummaryTitle}>本批次处理进度</Text>
+            <Text style={styles.progressText}>{getBatchSummary(latestBatch.files)}</Text>
+          </View>
           {latestBatch.files.some((file) =>
             ['WAITING_CONFIRMATION', 'CONFIRMED', 'DISCARDED'].includes(file.status)
           ) && (
@@ -263,7 +278,9 @@ export default function ImportQuestionsScreen() {
           )}
           {latestBatch.files.map((file) => (
             <View key={file.id} style={styles.resultCard}>
-              <View style={styles.resultTopRow}><Text numberOfLines={2} style={styles.fileName}>{file.originalFileName}</Text><Text style={styles.statusPill}>{getImportStatusText(file)}</Text></View>
+              <View style={styles.fileIcon}><Text style={styles.fileIconText}>{file.originalFileName.toLowerCase().endsWith('.docx') ? 'W' : '▧'}</Text></View>
+              <View style={styles.resultInfo}>
+                <View style={styles.resultTopRow}><Text numberOfLines={2} style={styles.fileName}>{file.originalFileName}</Text><Text style={styles.statusPill}>{getImportStatusText(file)}</Text></View>
               {file.status === 'WAITING_CONFIRMATION' && (
                 <Pressable
                   style={styles.structureButton}
@@ -274,6 +291,7 @@ export default function ImportQuestionsScreen() {
                   <Text style={styles.structureButtonText}>查看题目草稿</Text>
                 </Pressable>
               )}
+              </View>
             </View>
           ))}
         </View>
@@ -283,28 +301,38 @@ export default function ImportQuestionsScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { backgroundColor: ui.colors.background, flexGrow: 1, padding: 20, paddingBottom: 48, paddingTop: 58 },
-  backText: { color: ui.colors.primary, fontSize: 16, fontWeight: '700' },
-  title: { color: ui.colors.text, fontSize: 30, fontWeight: '800', marginTop: 26 },
-  libraryText: { color: ui.colors.primary, fontSize: 14, fontWeight: '800', marginTop: 12 },
-  tipText: { color: ui.colors.mutedText, fontSize: 14, lineHeight: 21, marginTop: 8 },
-  sectionTitle: { color: ui.colors.text, fontSize: 19, fontWeight: '800', marginTop: 30 },
-  optionGrid: { flexDirection: 'row', gap: 10, marginTop: 12 },
-  optionCard: { alignItems: 'center', backgroundColor: ui.colors.surface, borderColor: ui.colors.border, borderRadius: ui.radius.card, borderWidth: 1, flex: 1, minHeight: 150, paddingHorizontal: 8, paddingVertical: 15, ...ui.subtleShadow },
-  optionIcon: { alignItems: 'center', borderRadius: 14, height: 48, justifyContent: 'center', width: 48 },
+  container: { backgroundColor: ui.colors.background, flexGrow: 1, paddingHorizontal: 18, paddingBottom: 48, paddingTop: 53 },
+  topBar: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between' },
+  backButton: { alignItems: 'center', height: 32, justifyContent: 'center', width: 32 },
+  backText: { color: ui.colors.text, fontSize: 30, fontWeight: '400', lineHeight: 32 },
+  topTitle: { color: ui.colors.text, fontSize: 17, fontWeight: '800' },
+  topSpacer: { width: 32 },
+  pageIntro: { alignItems: 'center', backgroundColor: ui.colors.surface, borderColor: ui.colors.border, borderRadius: 14, borderWidth: 1, flexDirection: 'row', justifyContent: 'space-between', marginTop: 20, paddingHorizontal: 14, paddingVertical: 12, ...ui.subtleShadow },
+  libraryText: { color: ui.colors.text, flex: 1, fontSize: 13, fontWeight: '800' },
+  tipText: { color: ui.colors.mutedText, flex: 1, fontSize: 11, lineHeight: 16, marginLeft: 12, textAlign: 'right' },
+  sectionTitle: { color: ui.colors.text, fontSize: 18, fontWeight: '800', marginTop: 27 },
+  optionGrid: { flexDirection: 'row', gap: 9, marginTop: 12 },
+  optionCard: { alignItems: 'center', backgroundColor: ui.colors.surface, borderColor: '#EDF0F6', borderRadius: 14, borderWidth: 1, flex: 1, minHeight: 130, paddingHorizontal: 6, paddingVertical: 14, ...ui.subtleShadow },
+  optionIcon: { alignItems: 'center', borderRadius: 13, height: 45, justifyContent: 'center', width: 45 },
   cameraIcon: { backgroundColor: ui.colors.primarySoft },
   galleryIcon: { backgroundColor: '#F1ECFF' },
   wordIcon: { backgroundColor: '#E9F6FF' },
   optionIconText: { color: ui.colors.primary, fontSize: 20, fontWeight: '800' },
-  optionTitle: { color: ui.colors.text, fontSize: 13, fontWeight: '800', marginTop: 11, textAlign: 'center' },
-  optionDescription: { color: ui.colors.mutedText, fontSize: 11, lineHeight: 16, marginTop: 5, textAlign: 'center' },
-  pendingFileRow: { alignItems: 'center', backgroundColor: ui.colors.surface, borderRadius: 12, flexDirection: 'row', marginTop: 8, padding: 12, ...ui.subtleShadow },
-  pendingFileDot: { color: ui.colors.primary, fontSize: 20, marginRight: 8 },
-  fileName: { color: ui.colors.text, flex: 1, fontSize: 13, lineHeight: 19 },
+  optionTitle: { color: ui.colors.text, fontSize: 12, fontWeight: '800', marginTop: 10, textAlign: 'center' },
+  optionDescription: { color: ui.colors.mutedText, fontSize: 10, lineHeight: 15, marginTop: 5, textAlign: 'center' },
+  fileSectionHeading: { alignItems: 'baseline', flexDirection: 'row', justifyContent: 'space-between' },
+  fileSectionHint: { color: ui.colors.primary, fontSize: 11, fontWeight: '800' },
+  pendingFileRow: { alignItems: 'center', backgroundColor: ui.colors.surface, borderColor: '#EDF0F6', borderRadius: 12, borderWidth: 1, flexDirection: 'row', marginTop: 8, padding: 11, ...ui.subtleShadow },
+  fileIcon: { alignItems: 'center', backgroundColor: ui.colors.primarySoft, borderRadius: 9, height: 32, justifyContent: 'center', marginRight: 9, width: 32 },
+  fileIconText: { color: ui.colors.primary, fontSize: 14, fontWeight: '800' },
+  fileName: { color: ui.colors.text, flex: 1, fontSize: 12, lineHeight: 18 },
+  pendingPill: { backgroundColor: '#FFF1D9', borderRadius: 10, color: '#B46908', fontSize: 10, fontWeight: '800', marginLeft: 8, overflow: 'hidden', paddingHorizontal: 7, paddingVertical: 4 },
   batchSummaryCard: { backgroundColor: ui.colors.primarySoft, borderRadius: 12, marginTop: 10, padding: 12 },
-  resultCard: { backgroundColor: ui.colors.surface, borderColor: ui.colors.border, borderRadius: 14, borderWidth: 1, marginTop: 10, padding: 13 },
+  batchSummaryTitle: { color: ui.colors.primary, fontSize: 12, fontWeight: '800', marginBottom: 4 },
+  resultCard: { alignItems: 'flex-start', backgroundColor: ui.colors.surface, borderColor: '#EDF0F6', borderRadius: 13, borderWidth: 1, flexDirection: 'row', marginTop: 9, padding: 11, ...ui.subtleShadow },
+  resultInfo: { flex: 1 },
   resultTopRow: { alignItems: 'flex-start', flexDirection: 'row', gap: 8 },
-  statusPill: { backgroundColor: ui.colors.primarySoft, borderRadius: 8, color: ui.colors.primary, flexShrink: 1, fontSize: 11, fontWeight: '700', paddingHorizontal: 7, paddingVertical: 4 },
+  statusPill: { backgroundColor: ui.colors.primarySoft, borderRadius: 8, color: ui.colors.primary, flexShrink: 1, fontSize: 10, fontWeight: '700', overflow: 'hidden', paddingHorizontal: 7, paddingVertical: 4 },
   structureButton: { alignItems: 'center', borderColor: '#B7CDFC', borderRadius: 10, borderWidth: 1, marginTop: 12, paddingVertical: 10 },
   structureButtonText: { color: ui.colors.primary, fontSize: 13, fontWeight: '800' },
   batchDraftButton: { alignItems: 'center', backgroundColor: ui.colors.primary, borderRadius: ui.radius.button, marginTop: 12, paddingVertical: 14, ...ui.shadow },

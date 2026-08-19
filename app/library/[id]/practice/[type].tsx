@@ -191,19 +191,18 @@ export default function PracticeScreen() {
         <Pressable style={styles.backButton} onPress={() => router.back()}>
           <Text style={styles.backButtonText}>‹</Text>
         </Pressable>
-        <View style={styles.modeSwitch}>
-          <View style={styles.activeMode}><Text style={styles.activeModeText}>答题</Text></View>
-          <View style={styles.inactiveMode}><Text style={styles.inactiveModeText}>背题</Text></View>
-        </View>
-        <Pressable style={styles.moreButton} onPress={() => showDialog({ title: '练习设置', message: '这个版本暂未提供额外练习设置。', tone: 'info' })}>
-          <Text style={styles.moreButtonText}>•••</Text>
-        </Pressable>
+        <Text style={styles.topTitle}>{questionTypeLabels[currentQuestion.type]}</Text>
+        <View style={styles.topSpacer} />
       </View>
 
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.progressRow}>
-          <Text style={styles.practiceTitle}>{isWrongPractice ? '错题练习' : '顺序练习'}</Text>
-          <Text style={styles.progressText}><Text style={styles.currentProgress}>{currentQuestionIndex + 1}</Text> / {questions.length}</Text>
+          <View style={styles.progressInfo}>
+            <Text style={styles.practiceTitle}>{isWrongPractice ? '错题练习' : '顺序练习'} · 第 {currentQuestionIndex + 1} / {questions.length} 题</Text>
+            <View style={styles.progressTrack}>
+              <View style={[styles.progressFill, { width: `${((currentQuestionIndex + 1) / questions.length) * 100}%` }]} />
+            </View>
+          </View>
         </View>
 
         <View style={styles.questionHeader}>
@@ -331,27 +330,23 @@ export default function PracticeScreen() {
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: ui.colors.background },
   centerState: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: ui.colors.background },
-  topBar: { height: 92, paddingTop: 42, paddingHorizontal: 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: ui.colors.surface, borderBottomWidth: 1, borderBottomColor: ui.colors.border },
-  backButton: { width: 42, height: 36, borderWidth: 1, borderColor: ui.colors.border, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
-  backButtonText: { fontSize: 36, fontWeight: '300', color: ui.colors.text, lineHeight: 34, marginTop: -5 },
-  modeSwitch: { flexDirection: 'row', backgroundColor: ui.colors.disabledSoft, borderRadius: 12, padding: 3 },
-  activeMode: { backgroundColor: '#FFFFFF', borderRadius: 9, paddingHorizontal: 17, paddingVertical: 7, ...ui.subtleShadow },
-  inactiveMode: { paddingHorizontal: 22, paddingVertical: 8 },
-  activeModeText: { color: ui.colors.primary, fontSize: 16, fontWeight: '800' },
-  inactiveModeText: { color: ui.colors.mutedText, fontSize: 16 },
-  moreButton: { width: 42, height: 36, borderWidth: 1, borderColor: ui.colors.border, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
-  moreButtonText: { color: ui.colors.text, fontSize: 15, fontWeight: '800', letterSpacing: 1 },
+  topBar: { height: 88, paddingTop: 38, paddingHorizontal: 18, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: ui.colors.surface, borderBottomWidth: 1, borderBottomColor: ui.colors.border },
+  backButton: { alignItems: 'center', height: 36, justifyContent: 'center', width: 36 },
+  backButtonText: { fontSize: 34, fontWeight: '300', color: ui.colors.text, lineHeight: 34, marginTop: -5 },
+  topTitle: { color: ui.colors.text, fontSize: 16, fontWeight: '800' },
+  topSpacer: { width: 36 },
   content: { paddingBottom: 24 },
-  progressRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 20, borderBottomWidth: 1, borderBottomColor: ui.colors.border },
-  practiceTitle: { color: ui.colors.text, fontSize: 19, fontWeight: '800' },
-  progressText: { color: ui.colors.mutedText, fontSize: 16 },
-  currentProgress: { color: ui.colors.primary, fontWeight: '800' },
-  questionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 18, paddingHorizontal: 20 },
+  progressRow: { paddingHorizontal: 18, paddingVertical: 17, borderBottomWidth: 1, borderBottomColor: ui.colors.border },
+  progressInfo: { width: '100%' },
+  practiceTitle: { color: ui.colors.text, fontSize: 14, fontWeight: '800' },
+  progressTrack: { backgroundColor: '#E8EDF5', borderRadius: 4, height: 4, marginTop: 11, overflow: 'hidden', width: '100%' },
+  progressFill: { backgroundColor: ui.colors.primary, borderRadius: 4, height: '100%' },
+  questionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 18, paddingHorizontal: 18 },
   typeBadge: { backgroundColor: ui.colors.primarySoft, color: ui.colors.primary, borderRadius: 8, overflow: 'hidden', paddingHorizontal: 10, paddingVertical: 5, fontSize: 13, fontWeight: '800' },
   favoritePlaceholder: { color: ui.colors.mutedText, fontSize: 28, lineHeight: 30 },
-  stem: { color: ui.colors.text, fontSize: 21, lineHeight: 31, fontWeight: '800', paddingHorizontal: 20, marginTop: 17 },
-  optionList: { paddingHorizontal: 20, marginTop: 26, gap: 12 },
-  optionCard: { minHeight: 64, borderWidth: 1, borderRadius: 14, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center' },
+  stem: { color: ui.colors.text, fontSize: 19, lineHeight: 29, fontWeight: '800', paddingHorizontal: 18, marginTop: 16 },
+  optionList: { paddingHorizontal: 18, marginTop: 24, gap: 10 },
+  optionCard: { minHeight: 58, borderWidth: 1, borderRadius: 11, paddingHorizontal: 15, flexDirection: 'row', alignItems: 'center' },
   optionDefault: { backgroundColor: ui.colors.surface, borderColor: ui.colors.border },
   optionSelected: { backgroundColor: ui.colors.primarySoft, borderColor: ui.colors.primary },
   optionCorrect: { backgroundColor: ui.colors.successSoft, borderColor: ui.colors.success },
@@ -360,9 +355,9 @@ const styles = StyleSheet.create({
   optionText: { color: ui.colors.text, fontSize: 16, flex: 1, lineHeight: 23 },
   correctMark: { color: '#15803D', fontSize: 36, fontWeight: '700' },
   wrongMark: { color: '#DC2626', fontSize: 36, fontWeight: '700' },
-  submitButton: { backgroundColor: ui.colors.primary, borderRadius: ui.radius.button, alignItems: 'center', marginHorizontal: 20, marginTop: 26, paddingVertical: 15, ...ui.shadow },
+  submitButton: { backgroundColor: ui.colors.primary, borderRadius: 12, alignItems: 'center', marginHorizontal: 18, marginTop: 24, paddingVertical: 15, ...ui.shadow },
   submitButtonText: { color: '#FFFFFF', fontSize: 16, fontWeight: '800' },
-  resultCard: { marginHorizontal: 20, marginTop: 22, padding: 16, borderRadius: ui.radius.card },
+  resultCard: { marginHorizontal: 18, marginTop: 20, padding: 15, borderRadius: 14 },
   resultCorrect: { backgroundColor: ui.colors.successSoft },
   resultWrong: { backgroundColor: ui.colors.dangerSoft },
   resultTitle: { fontSize: 22, fontWeight: '700' },

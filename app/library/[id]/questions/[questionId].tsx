@@ -34,8 +34,8 @@ export default function QuestionDetailScreen() {
     async function loadQuestion() {
       try {
         setQuestion(await fetchQuestionDetail(questionId));
-      } catch {
-        setError('题目详情加载失败，请检查后端是否已启动。');
+      } catch (loadError) {
+        setError(loadError instanceof Error ? loadError.message : '题目详情加载失败，请检查后端是否已启动。');
       }
     }
 
@@ -98,8 +98,9 @@ export default function QuestionDetailScreen() {
       });
       setQuestion(updatedQuestion);
       setIsEditing(false);
-    } catch {
-      showDialog({ title: '保存失败', message: '请检查后端是否已启动后重试。', tone: 'danger' });
+    } catch (saveError) {
+      const message = saveError instanceof Error ? saveError.message : '请检查后端是否已启动后重试。';
+      showDialog({ title: '保存失败', message, tone: 'warning', primaryLabel: '继续修改' });
     } finally {
       setIsSaving(false);
     }
@@ -110,8 +111,9 @@ export default function QuestionDetailScreen() {
     try {
       await deleteQuestion(questionId);
       router.back();
-    } catch {
-      showDialog({ title: '删除失败', message: '请检查后端是否已启动后重试。', tone: 'danger' });
+    } catch (deleteError) {
+      const message = deleteError instanceof Error ? deleteError.message : '请检查后端是否已启动后重试。';
+      showDialog({ title: '删除失败', message, tone: 'danger' });
     } finally {
       setIsDeleting(false);
     }

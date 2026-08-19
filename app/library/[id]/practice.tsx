@@ -54,9 +54,11 @@ export default function PracticeOverviewScreen() {
         <Text style={styles.backText}>‹ 返回</Text>
       </Pressable>
       <Text style={styles.title}>
-        {isWrongPractice ? '错题集练习' : '完整题库练习'}
+        {isWrongPractice ? '错题集' : '选择练习题型'}
       </Text>
-      <Text style={styles.subtitle}>本次会将相同类型的题集中在一起练习。</Text>
+      <Text style={styles.subtitle}>
+        {isWrongPractice ? `当前待掌握 ${questions.length} 题，按题型集中练习。` : '相同题型会集中在一起练习。'}
+      </Text>
       <Pressable
         style={styles.practiceCard}
         onPress={() =>
@@ -98,21 +100,21 @@ export default function PracticeOverviewScreen() {
 }
 
 const styles = StyleSheet.create({
-  screen: { backgroundColor: ui.colors.background, flex: 1, padding: 20, paddingTop: 58 },
+  screen: { backgroundColor: ui.colors.background, flex: 1, paddingHorizontal: 18, paddingTop: 54 },
   centerState: { alignItems: 'center', backgroundColor: ui.colors.background, flex: 1, justifyContent: 'center', padding: 24 },
   stateText: { color: ui.colors.mutedText, fontSize: 15 },
-  backButton: { alignSelf: 'flex-start', marginBottom: 26 },
+  backButton: { alignSelf: 'flex-start', marginBottom: 20 },
   backText: { color: ui.colors.primary, fontSize: 16, fontWeight: '700' },
-  title: { color: ui.colors.text, fontSize: 29, fontWeight: '800', letterSpacing: -0.6 },
-  subtitle: { color: ui.colors.mutedText, fontSize: 15, lineHeight: 22, marginTop: 10 },
-  practiceCard: { alignItems: 'center', backgroundColor: ui.colors.surface, borderColor: ui.colors.border, borderRadius: ui.radius.card, borderWidth: 1, flexDirection: 'row', marginTop: 14, padding: 16, ...ui.subtleShadow },
-  typeIcon: { alignItems: 'center', borderRadius: 14, height: 48, justifyContent: 'center', width: 48 },
+  title: { color: ui.colors.text, fontSize: 24, fontWeight: '800', letterSpacing: -0.6 },
+  subtitle: { color: ui.colors.mutedText, fontSize: 14, lineHeight: 21, marginTop: 9 },
+  practiceCard: { alignItems: 'center', backgroundColor: ui.colors.surface, borderColor: '#E8EDF5', borderRadius: 14, borderWidth: 1, flexDirection: 'row', marginTop: 12, padding: 14, ...ui.subtleShadow },
+  typeIcon: { alignItems: 'center', borderRadius: 12, height: 44, justifyContent: 'center', width: 44 },
   singleIcon: { backgroundColor: ui.colors.primarySoft },
   multipleIcon: { backgroundColor: '#F1ECFF' },
   trueFalseIcon: { backgroundColor: ui.colors.successSoft },
   typeIconText: { color: ui.colors.primary, fontSize: 19, fontWeight: '800' },
-  cardInfo: { flex: 1, marginLeft: 14 },
-  cardTitle: { color: ui.colors.text, fontSize: 17, fontWeight: '800' },
-  cardMeta: { color: ui.colors.mutedText, fontSize: 13, marginTop: 6 },
+  cardInfo: { flex: 1, marginLeft: 12 },
+  cardTitle: { color: ui.colors.text, fontSize: 16, fontWeight: '800' },
+  cardMeta: { color: ui.colors.mutedText, fontSize: 12, marginTop: 5 },
   chevron: { color: ui.colors.disabled, fontSize: 28, lineHeight: 30 },
 });

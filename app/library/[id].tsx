@@ -73,8 +73,11 @@ export default function LibraryDetailScreen() {
     try {
       await updateLibrary(id, trimmedName);
       setIsEditModalVisible(false);
-    } catch {
-      showDialog({ title: '修改失败', message: '请确认后端正在运行，并且手机和电脑在同一 Wi-Fi。', tone: 'danger' });
+    } catch (updateError) {
+      const message = updateError instanceof Error
+        ? updateError.message
+        : '请确认后端正在运行，并且手机和电脑在同一 Wi-Fi。';
+      showDialog({ title: '修改失败', message, tone: 'warning', primaryLabel: '继续修改' });
     }
   }
 
@@ -82,8 +85,11 @@ export default function LibraryDetailScreen() {
     try {
       await deleteLibraryRequest(id);
       router.back();
-    } catch {
-      showDialog({ title: '删除失败', message: '请确认后端正在运行，并且手机和电脑在同一 Wi-Fi。', tone: 'danger' });
+    } catch (deleteError) {
+      const message = deleteError instanceof Error
+        ? deleteError.message
+        : '请确认后端正在运行，并且手机和电脑在同一 Wi-Fi。';
+      showDialog({ title: '删除失败', message, tone: 'danger' });
     }
   }
 
@@ -125,11 +131,11 @@ export default function LibraryDetailScreen() {
           <Pressable
             style={styles.primaryButton}
             onPress={() => router.push(`/library/${id}/import`)}>
-            <Text style={styles.primaryButtonText}>导入题目</Text>
+            <Text style={styles.primaryButtonText}>⇧  导入题目</Text>
           </Pressable>
           <View style={styles.quickActionRow}>
             <Pressable style={styles.actionButton} onPress={() => router.push(`/library/${id}/practice`)}>
-              <Text style={styles.actionButtonText}>☷ 刷完整题库</Text>
+              <Text style={styles.actionButtonText}>☷  刷完整题库</Text>
             </Pressable>
             <Pressable
               disabled={isQuestionSummaryLoading || wrongQuestionCount === 0}
@@ -145,25 +151,24 @@ export default function LibraryDetailScreen() {
                   styles.actionButtonText,
                   (isQuestionSummaryLoading || wrongQuestionCount === 0) && styles.disabledActionButtonText,
                 ]}>
-                ✕ 刷错题集（{isQuestionSummaryLoading ? '...' : wrongQuestionCount}）
+                ✕  刷错题集（{isQuestionSummaryLoading ? '...' : wrongQuestionCount}）
               </Text>
             </Pressable>
           </View>
         </View>
 
         <View style={styles.previewTitleRow}>
-          <Text style={styles.questionTitle}>题目预览（{libraryQuestions.length}）</Text>
+          <Text style={styles.questionTitle}>题目预览（最新 3 题）</Text>
           {libraryQuestions.length > 0 && (
             <Pressable onPress={() => router.push(`/library/${id}/questions`)}>
               <Text style={styles.viewAllText}>查看全部 ›</Text>
             </Pressable>
           )}
         </View>
-        <Text style={styles.previewHint}>这里只显示最多 3 道题；全部题目将在下一页查看。</Text>
         {libraryQuestions.length === 0 ? (
           <Text style={styles.emptyText}>暂无题目，可通过“导入题目”加入题库。</Text>
         ) : (
-          libraryQuestions.slice(0, 3).map((question) => (
+          libraryQuestions.slice(0, 3).map((question, index) => (
             <Pressable
               key={question.id}
               style={styles.questionCard}
@@ -171,9 +176,12 @@ export default function LibraryDetailScreen() {
                 pathname: '/library/[id]/questions/[questionId]',
                 params: { id, questionId: question.id },
               })}>
-              <Text style={styles.questionType}>{questionTypeLabels[question.type]}</Text>
-              <Text style={styles.questionStem}>{question.stem}</Text>
-              <Text style={styles.questionHint}>点击查看题目详情</Text>
+              <View style={styles.questionNumber}><Text style={styles.questionNumberText}>{index + 1}</Text></View>
+              <View style={styles.questionPreviewInfo}>
+                <Text numberOfLines={1} style={styles.questionStem}>{question.stem}</Text>
+                <Text style={styles.questionType}>{questionTypeLabels[question.type]}</Text>
+              </View>
+              <Text style={styles.questionHint}>›</Text>
             </Pressable>
           ))
         )}
@@ -183,12 +191,27 @@ export default function LibraryDetailScreen() {
 
         <View style={styles.managementSection}>
           <Text style={styles.managementTitle}>学习库管理</Text>
-          <Pressable style={[styles.actionButton, styles.managementButton]} onPress={openEditModal}>
-            <Text style={styles.actionButtonText}>编辑学习库名称</Text>
-          </Pressable>
-          <Pressable style={[styles.actionButton, styles.managementButton]} onPress={confirmDeleteLibrary}>
-            <Text style={styles.deleteButtonText}>删除学习库</Text>
-          </Pressable>
+          <View style={styles.managementGrid}>
+            <Pressable style={styles.managementTile} onPress={() => router.push(`/library/${id}/questions`)}>
+              <Text style={styles.managementIcon}>☷</Text>
+              <Text style={styles.managementLabel}>题目管理</Text>
+            </Pressable>
+            <Pressable
+              disabled={isQuestionSummaryLoading || wrongQuestionCount === 0}
+              style={[styles.managementTile, (isQuestionSummaryLoading || wrongQuestionCount === 0) && styles.disabledManagementTile]}
+              onPress={() => router.push({ pathname: '/library/[id]/practice', params: { id, mode: 'wrong' } })}>
+              <Text style={[styles.managementIcon, (isQuestionSummaryLoading || wrongQuestionCount === 0) && styles.disabledManagementText]}>✕</Text>
+              <Text style={[styles.managementLabel, (isQuestionSummaryLoading || wrongQuestionCount === 0) && styles.disabledManagementText]}>错题集</Text>
+            </Pressable>
+            <Pressable style={styles.managementTile} onPress={openEditModal}>
+              <Text style={styles.managementIcon}>✎</Text>
+              <Text style={styles.managementLabel}>重命名</Text>
+            </Pressable>
+            <Pressable style={styles.managementTile} onPress={confirmDeleteLibrary}>
+              <Text style={[styles.managementIcon, styles.deleteButtonText]}>⌫</Text>
+              <Text style={[styles.managementLabel, styles.deleteButtonText]}>删除</Text>
+            </Pressable>
+          </View>
         </View>
       </ScrollView>
       <Modal animationType="fade" transparent visible={isEditModalVisible}>
@@ -218,31 +241,29 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   container: {
-    paddingHorizontal: 20,
-    paddingTop: 64,
+    paddingHorizontal: 18,
+    paddingTop: 56,
     paddingBottom: 48,
   },
-  backButton: {
-    marginBottom: 24,
-  },
+  backButton: { marginBottom: 20 },
   backButtonText: {
     color: ui.colors.primary,
     fontSize: 16,
     fontWeight: '700',
   },
-  libraryHero: { alignItems: 'center', flexDirection: 'row', marginTop: 4 },
-  heroFolder: { backgroundColor: '#EAF1FF', borderRadius: 16, height: 60, overflow: 'hidden', position: 'relative', width: 60 },
-  heroFolderTab: { backgroundColor: '#85ADFF', borderRadius: 5, height: 14, left: 10, position: 'absolute', top: 11, width: 26 },
-  heroFolderBody: { backgroundColor: ui.colors.primary, borderRadius: 9, bottom: 11, left: 8, position: 'absolute', right: 8, top: 22 },
-  heroInfo: { flex: 1, marginLeft: 14 },
+  libraryHero: { alignItems: 'center', flexDirection: 'row', marginTop: 2 },
+  heroFolder: { backgroundColor: '#EAF1FF', borderRadius: 14, height: 54, overflow: 'hidden', position: 'relative', width: 54 },
+  heroFolderTab: { backgroundColor: '#85ADFF', borderRadius: 5, height: 12, left: 9, position: 'absolute', top: 9, width: 24 },
+  heroFolderBody: { backgroundColor: ui.colors.primary, borderRadius: 8, bottom: 9, left: 7, position: 'absolute', right: 7, top: 20 },
+  heroInfo: { flex: 1, marginLeft: 13 },
   title: {
     color: ui.colors.text,
-    fontSize: 25,
+    fontSize: 22,
     fontWeight: '800',
   },
   meta: {
     color: ui.colors.mutedText,
-    fontSize: 13,
+    fontSize: 12,
     marginTop: 6,
   },
   errorText: {
@@ -251,14 +272,14 @@ const styles = StyleSheet.create({
     marginTop: 10,
   },
   primaryActionGroup: {
-    marginTop: 24,
+    marginTop: 21,
   },
-  quickActionRow: { flexDirection: 'row', gap: 10, marginTop: 10 },
+  quickActionRow: { flexDirection: 'row', gap: 9, marginTop: 9 },
   questionTitle: {
     color: '#0F172A',
-    fontSize: 18,
+    fontSize: 17,
     fontWeight: '700',
-    marginTop: 32,
+    marginTop: 29,
   },
   previewTitleRow: {
     alignItems: 'center',
@@ -269,39 +290,42 @@ const styles = StyleSheet.create({
     color: '#2563EB',
     fontSize: 14,
     fontWeight: '700',
-    marginTop: 32,
-  },
-  previewHint: {
-    color: '#64748B',
-    fontSize: 13,
-    lineHeight: 20,
-    marginTop: 8,
+    marginTop: 29,
   },
   questionCard: {
+    alignItems: 'center',
     backgroundColor: ui.colors.surface,
     borderColor: ui.colors.border,
-    borderRadius: ui.radius.card,
+    borderRadius: 12,
     borderWidth: 1,
+    flexDirection: 'row',
     marginTop: 12,
-    padding: 14,
+    minHeight: 56,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
     ...ui.subtleShadow,
   },
+  questionNumber: { alignItems: 'center', backgroundColor: '#F1F5FB', borderRadius: 12, height: 24, justifyContent: 'center', width: 24 },
+  questionNumberText: { color: ui.colors.mutedText, fontSize: 12, fontWeight: '800' },
+  questionPreviewInfo: { flex: 1, marginLeft: 10 },
   questionStem: {
-    color: '#334155',
-    fontSize: 15,
-    lineHeight: 22,
+    color: ui.colors.text,
+    fontSize: 13,
+    fontWeight: '700',
   },
   questionType: {
     color: '#2563EB',
-    fontSize: 13,
+    fontSize: 11,
     fontWeight: '700',
-    marginBottom: 6,
+    marginTop: 4,
   },
   questionHint: {
-    color: '#64748B',
-    fontSize: 13,
-    marginTop: 10,
+    color: '#93A1B5',
+    fontSize: 24,
+    lineHeight: 28,
+    marginLeft: 8,
   },
+  previewHint: { color: ui.colors.mutedText, fontSize: 12, marginTop: 10 },
   emptyText: {
     color: '#64748B',
     fontSize: 14,
@@ -344,15 +368,18 @@ const styles = StyleSheet.create({
   disabledActionButtonText: {
     color: ui.colors.disabled,
   },
-  managementSection: {
-    marginTop: 32,
-  },
+  managementSection: { marginTop: 30 },
   managementTitle: {
     color: '#0F172A',
-    fontSize: 18,
+    fontSize: 17,
     fontWeight: '700',
   },
-  managementButton: { flex: 0, marginTop: 12 },
+  managementGrid: { flexDirection: 'row', gap: 8, marginTop: 12 },
+  managementTile: { alignItems: 'center', backgroundColor: ui.colors.surface, borderColor: ui.colors.border, borderRadius: 12, borderWidth: 1, flex: 1, minHeight: 74, justifyContent: 'center', paddingHorizontal: 4, ...ui.subtleShadow },
+  managementIcon: { color: ui.colors.primary, fontSize: 19, fontWeight: '800' },
+  managementLabel: { color: ui.colors.text, fontSize: 10, fontWeight: '700', marginTop: 7 },
+  disabledManagementTile: { backgroundColor: ui.colors.disabledSoft },
+  disabledManagementText: { color: ui.colors.disabled },
   deleteButtonText: {
     color: ui.colors.danger,
     fontSize: 15,

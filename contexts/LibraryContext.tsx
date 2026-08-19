@@ -34,8 +34,10 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
 
     try {
       setLibraries(await fetchLibraries());
-    } catch {
-      setError('无法连接后端，请检查电脑和手机是否在同一 Wi-Fi。');
+    } catch (loadError) {
+      setError(loadError instanceof Error
+        ? loadError.message
+        : '无法连接后端，请检查电脑和手机是否在同一 Wi-Fi。');
     } finally {
       setIsLoading(false);
     }

@@ -70,7 +70,7 @@ export default function QuestionDraftsScreen() {
   return (
     <ScrollView contentContainerStyle={styles.container}>
       <Pressable onPress={() => router.back()}>
-        <Text style={styles.backText}>返回</Text>
+        <Text style={styles.backText}>‹ 返回</Text>
       </Pressable>
       <Text style={styles.title}>确认识别结果</Text>
       <Text style={styles.subtitle}>先核对识别内容，需要时可编辑；确认后才会进入正式题库。</Text>
@@ -83,7 +83,10 @@ export default function QuestionDraftsScreen() {
 
       {drafts.map((draft) => (
         <View key={draft.id} style={styles.draftCard}>
-          <View style={styles.draftHeader}><Text style={styles.draftNumber}>第 {draft.sortOrder} 题</Text><Text style={styles.typeBadge}>{questionTypeText[draft.questionType]}</Text></View>
+          <View style={styles.draftHeader}>
+            <Text style={styles.draftNumber}>第 {draft.sortOrder} 题</Text>
+            <Text style={styles.typeBadge}>{questionTypeText[draft.questionType]}</Text>
+          </View>
           <Text style={styles.stem}>{draft.stem}</Text>
 
           {draft.options.map((option) => (
@@ -134,29 +137,29 @@ export default function QuestionDraftsScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { backgroundColor: ui.colors.background, flexGrow: 1, padding: 20, paddingBottom: 48, paddingTop: 58 },
+  container: { backgroundColor: ui.colors.background, flexGrow: 1, paddingHorizontal: 18, paddingBottom: 48, paddingTop: 54 },
   backText: { color: ui.colors.primary, fontSize: 16, fontWeight: '700' },
-  title: { color: ui.colors.text, fontSize: 29, fontWeight: '800', marginTop: 25 },
+  title: { color: ui.colors.text, fontSize: 23, fontWeight: '800', marginTop: 22 },
   subtitle: { color: ui.colors.mutedText, fontSize: 14, lineHeight: 21, marginTop: 10 },
   loading: { marginTop: 42 },
   errorText: { color: ui.colors.danger, marginTop: 28 },
   emptyText: { color: ui.colors.mutedText, marginTop: 28 },
-  draftCard: { backgroundColor: ui.colors.surface, borderColor: ui.colors.border, borderRadius: ui.radius.card, borderWidth: 1, marginTop: 14, padding: 16, ...ui.subtleShadow },
+  draftCard: { backgroundColor: ui.colors.surface, borderColor: '#E8EDF5', borderRadius: 14, borderWidth: 1, marginTop: 14, padding: 14, ...ui.subtleShadow },
   draftHeader: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between' },
-  draftNumber: { color: ui.colors.mutedText, fontSize: 13, fontWeight: '800' },
+  draftNumber: { color: ui.colors.mutedText, fontSize: 12, fontWeight: '800' },
   typeBadge: { backgroundColor: ui.colors.primarySoft, borderRadius: 8, color: ui.colors.primary, fontSize: 12, fontWeight: '800', paddingHorizontal: 8, paddingVertical: 4 },
-  stem: { color: ui.colors.text, fontSize: 17, fontWeight: '800', lineHeight: 25, marginTop: 12 },
-  option: { color: ui.colors.text, fontSize: 15, lineHeight: 22, marginTop: 12 },
-  label: { color: ui.colors.mutedText, fontSize: 13, marginTop: 18 },
-  value: { color: ui.colors.text, fontSize: 16, fontWeight: '800', marginTop: 5 },
-  explanation: { color: ui.colors.mutedText, fontSize: 14, lineHeight: 21, marginTop: 14 },
-  buttonRow: { flexDirection: 'row', gap: 10, marginTop: 18 },
-  editButton: { alignItems: 'center', borderColor: '#B7CDFC', borderRadius: 11, borderWidth: 1, flex: 1, paddingVertical: 11 },
+  stem: { color: ui.colors.text, fontSize: 16, fontWeight: '800', lineHeight: 24, marginTop: 11 },
+  option: { color: ui.colors.mutedText, fontSize: 14, lineHeight: 21, marginTop: 9 },
+  label: { color: ui.colors.mutedText, fontSize: 12, fontWeight: '800', marginTop: 16 },
+  value: { color: ui.colors.text, fontSize: 15, fontWeight: '800', marginTop: 5 },
+  explanation: { color: ui.colors.mutedText, fontSize: 13, lineHeight: 20, marginTop: 12 },
+  buttonRow: { flexDirection: 'row', gap: 9, marginTop: 17 },
+  editButton: { alignItems: 'center', borderColor: '#B7CDFC', borderRadius: 10, borderWidth: 1, flex: 1, paddingVertical: 11 },
   editButtonText: { color: ui.colors.primary, fontSize: 14, fontWeight: '800' },
-  confirmButton: { alignItems: 'center', backgroundColor: ui.colors.primary, borderRadius: 11, flex: 1, paddingVertical: 11 },
+  confirmButton: { alignItems: 'center', backgroundColor: ui.colors.primary, borderRadius: 10, flex: 1, paddingVertical: 11 },
   confirmButtonDisabled: { backgroundColor: ui.colors.disabled },
   confirmButtonText: { color: '#FFFFFF', fontSize: 14, fontWeight: '800' },
-  discardButton: { alignItems: 'center', marginTop: 14, paddingVertical: 4 },
+  discardButton: { alignItems: 'center', marginTop: 12, paddingVertical: 4 },
   discardButtonText: { color: ui.colors.danger, fontSize: 14, fontWeight: '800' },
   confirmedText: { color: ui.colors.success, fontSize: 15, fontWeight: '800', marginTop: 20 },
 });

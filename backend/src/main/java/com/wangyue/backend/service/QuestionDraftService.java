@@ -4,6 +4,7 @@ import com.wangyue.backend.dto.RecognizedQuestion;
 import com.wangyue.backend.dto.RecognizedQuestionOption;
 import com.wangyue.backend.dto.CreateQuestionOptionRequest;
 import com.wangyue.backend.dto.UpdateQuestionDraftRequest;
+import com.wangyue.backend.exception.OperationConflictException;
 import com.wangyue.backend.entity.ImportFile;
 import com.wangyue.backend.entity.ImportBatch;
 import com.wangyue.backend.entity.QuestionDraft;
@@ -100,7 +101,7 @@ public class QuestionDraftService {
             throw new IllegalArgumentException("题目草稿不属于当前学习库或导入文件");
         }
         if (!"WAITING_CONFIRMATION".equals(draft.getStatus())) {
-            throw new IllegalStateException("当前题目草稿不能再编辑");
+            throw new OperationConflictException("草稿状态已变化，请刷新后重试");
         }
 
         validateDraftUpdateRequest(request);
@@ -136,7 +137,7 @@ public class QuestionDraftService {
             throw new IllegalArgumentException("题目草稿不属于当前学习库或导入文件");
         }
         if (!"WAITING_CONFIRMATION".equals(draft.getStatus())) {
-            throw new IllegalStateException("当前题目草稿已经确认入库，不能重复确认");
+            throw new OperationConflictException("这道草稿已经处理过，请刷新后重试");
         }
 
         List<QuestionDraftOption> draftOptions = questionDraftOptionMapper.selectList(
@@ -181,7 +182,7 @@ public class QuestionDraftService {
             throw new IllegalArgumentException("题目草稿不属于当前学习库或导入文件");
         }
         if (!"WAITING_CONFIRMATION".equals(draft.getStatus())) {
-            throw new IllegalStateException("当前题目草稿不能再不入库");
+            throw new OperationConflictException("这道草稿已经处理过，请刷新后重试");
         }
 
         questionDraftOptionMapper.delete(new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<QuestionDraftOption>()

@@ -107,6 +107,8 @@ export default function BatchQuestionDraftsScreen() {
   }
 
   const waitingConfirmationCount = drafts.filter((draft) => draft.status !== 'CONFIRMED').length;
+  const confirmedCount = drafts.length - waitingConfirmationCount;
+  const confirmationProgress = drafts.length === 0 ? 0 : (confirmedCount / drafts.length) * 100;
 
   return (
     <FlatList
@@ -136,6 +138,10 @@ export default function BatchQuestionDraftsScreen() {
           <Text style={styles.subtitle}>
             共识别出 {drafts.length} 道题。可逐题修改；确认后才会进入正式题库。
           </Text>
+          <View style={styles.progressTrack}>
+            <View style={[styles.progressFill, { width: `${confirmationProgress}%` }]} />
+          </View>
+          <Text style={styles.progressHint}>已确认 {confirmedCount} / {drafts.length} 题</Text>
           {isLoading && <ActivityIndicator color="#2563EB" size="large" style={styles.loading} />}
           {!!error && <Text style={styles.errorText}>{error}</Text>}
           {!isLoading && !error && drafts.length === 0 && (
@@ -187,27 +193,30 @@ export default function BatchQuestionDraftsScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { backgroundColor: ui.colors.background, flexGrow: 1, padding: 20, paddingBottom: 48, paddingTop: 58 },
+  container: { backgroundColor: ui.colors.background, flexGrow: 1, paddingHorizontal: 18, paddingBottom: 48, paddingTop: 54 },
   topActionRow: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between' },
-  backText: { color: ui.colors.primary, fontSize: 16, fontWeight: '700' },
-  confirmAllButton: { backgroundColor: ui.colors.primary, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10, ...ui.shadow },
+  backText: { color: ui.colors.primary, fontSize: 15, fontWeight: '800' },
+  confirmAllButton: { backgroundColor: ui.colors.primary, borderRadius: 11, paddingHorizontal: 13, paddingVertical: 10, ...ui.shadow },
   confirmAllButtonDisabled: { backgroundColor: ui.colors.disabled },
   confirmAllButtonText: { color: '#FFFFFF', fontSize: 13, fontWeight: '800' },
-  titleRow: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between', marginTop: 25 },
-  title: { color: ui.colors.text, fontSize: 29, fontWeight: '800', letterSpacing: -0.6 },
+  titleRow: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between', marginTop: 23 },
+  title: { color: ui.colors.text, fontSize: 23, fontWeight: '800', letterSpacing: -0.6 },
   progressBadge: { backgroundColor: ui.colors.primarySoft, borderRadius: 9, color: ui.colors.primary, fontSize: 12, fontWeight: '800', paddingHorizontal: 9, paddingVertical: 5 },
   subtitle: { color: ui.colors.mutedText, fontSize: 14, lineHeight: 21, marginTop: 10 },
+  progressTrack: { backgroundColor: '#E8EDF5', borderRadius: 4, height: 4, marginTop: 14, overflow: 'hidden' },
+  progressFill: { backgroundColor: ui.colors.primary, borderRadius: 4, height: '100%' },
+  progressHint: { color: ui.colors.mutedText, fontSize: 11, marginTop: 7 },
   loading: { marginTop: 30 },
   errorText: { color: ui.colors.danger, fontSize: 15, marginTop: 24 },
   emptyText: { color: ui.colors.mutedText, fontSize: 15, marginTop: 24 },
-  draftCard: { backgroundColor: ui.colors.surface, borderColor: ui.colors.border, borderRadius: ui.radius.card, borderWidth: 1, marginTop: 14, padding: 16, ...ui.subtleShadow },
+  draftCard: { backgroundColor: ui.colors.surface, borderColor: '#E8EDF5', borderRadius: 14, borderWidth: 1, marginTop: 12, padding: 14, ...ui.subtleShadow },
   draftHeader: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between' },
   draftNumber: { color: ui.colors.mutedText, fontSize: 13, fontWeight: '800' },
   typeBadge: { backgroundColor: ui.colors.primarySoft, borderRadius: 8, color: ui.colors.primary, fontSize: 12, fontWeight: '800', paddingHorizontal: 8, paddingVertical: 4 },
-  stem: { color: ui.colors.text, fontSize: 17, fontWeight: '800', lineHeight: 25, marginTop: 12 },
-  answerText: { color: ui.colors.mutedText, fontSize: 13, marginTop: 14 },
+  stem: { color: ui.colors.text, fontSize: 16, fontWeight: '800', lineHeight: 24, marginTop: 11 },
+  answerText: { color: ui.colors.mutedText, fontSize: 12, marginTop: 12 },
   confirmedText: { color: ui.colors.success, fontSize: 14, fontWeight: '800', marginTop: 18 },
-  buttonRow: { flexDirection: 'row', gap: 10, marginTop: 18 },
+  buttonRow: { flexDirection: 'row', gap: 9, marginTop: 16 },
   editButton: { alignItems: 'center', borderColor: '#B7CDFC', borderRadius: 11, borderWidth: 1, flex: 1, paddingVertical: 11 },
   editButtonText: { color: ui.colors.primary, fontSize: 14, fontWeight: '800' },
   confirmButton: { alignItems: 'center', backgroundColor: ui.colors.primary, borderRadius: 11, flex: 1, paddingVertical: 11 },

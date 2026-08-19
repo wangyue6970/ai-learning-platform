@@ -7,6 +7,7 @@ import com.wangyue.backend.dto.ImportFileResponse;
 import com.wangyue.backend.dto.QuestionDraftOptionResponse;
 import com.wangyue.backend.dto.QuestionDraftResponse;
 import com.wangyue.backend.dto.UpdateQuestionDraftRequest;
+import com.wangyue.backend.exception.OperationConflictException;
 import com.wangyue.backend.entity.ImportBatch;
 import com.wangyue.backend.entity.ImportFile;
 import com.wangyue.backend.entity.QuestionDraft;
@@ -23,6 +24,8 @@ import java.util.Locale;
 import java.util.Map;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import tools.jackson.core.JacksonException;
 import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.ObjectMapper;
@@ -31,6 +34,7 @@ import tools.jackson.databind.ObjectMapper;
 public class ImportService {
 
     private static final int MAX_ERROR_MESSAGE_LENGTH = 480;
+    private static final Logger logger = LoggerFactory.getLogger(ImportService.class);
 
     private final LearningLibraryService learningLibraryService;
     private final ImportBatchMapper importBatchMapper;
@@ -299,7 +303,7 @@ public class ImportService {
     public ImportFileResponse recognizeFile(Long libraryId, Long importFileId) {
         ImportFile importFile = findOwnedImportFile(libraryId, importFileId);
         if (!"WAITING_RECOGNITION".equals(importFile.getStatus())) {
-            throw new IllegalStateException("当前文件不处于等待识别状态");
+            throw new OperationConflictException("文件状态已变化，请刷新后重试");
         }
         importFile.setStatus("RECOGNIZING");
         importFile.setErrorMessage(null);
@@ -311,6 +315,7 @@ public class ImportService {
             importFile.setStatus("WAITING_STRUCTURING");
             importFileMapper.updateById(importFile);
         } catch (RuntimeException exception) {
+            logger.error("导入文件 {} 识别失败", importFileId, exception);
             importFile.setStatus("RECOGNITION_FAILED");
             importFile.setErrorMessage(toStoredErrorMessage(exception));
             importFileMapper.updateById(importFile);
@@ -342,7 +347,7 @@ public class ImportService {
     public ImportFileResponse structureFile(Long libraryId, Long importFileId) {
         ImportFile importFile = findOwnedImportFile(libraryId, importFileId);
         if (!"WAITING_STRUCTURING".equals(importFile.getStatus())) {
-            throw new IllegalStateException("当前文件不处于等待生成题目状态");
+            throw new OperationConflictException("文件状态已变化，请刷新后重试");
         }
         if (importFile.getRecognitionText() == null || importFile.getRecognitionText().isBlank()) {
             importFile.setStatus("STRUCTURING_FAILED");
@@ -363,6 +368,7 @@ public class ImportService {
             );
             importFile.setStatus("WAITING_CONFIRMATION");
         } catch (RuntimeException exception) {
+            logger.error("导入文件 {} 生成题目失败", importFileId, exception);
             importFile.setStatus("STRUCTURING_FAILED");
             importFile.setErrorMessage(toStoredErrorMessage(exception));
         }

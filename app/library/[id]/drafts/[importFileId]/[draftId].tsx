@@ -123,7 +123,7 @@ export default function EditQuestionDraftScreen() {
       });
     } catch (saveError) {
       const message = saveError instanceof Error ? saveError.message : '保存草稿失败，请稍后重试';
-      showDialog({ title: '保存失败', message, tone: 'danger' });
+      showDialog({ title: '保存失败', message, tone: 'warning', primaryLabel: '继续修改' });
     } finally {
       setIsSaving(false);
     }
@@ -134,8 +134,8 @@ export default function EditQuestionDraftScreen() {
       <Pressable onPress={() => router.back()}>
         <Text style={styles.backText}>返回</Text>
       </Pressable>
-      <Text style={styles.title}>编辑题目草稿</Text>
-      <Text style={styles.subtitle}>保存只会更新草稿；回到上一页确认入库前仍可再次修改。</Text>
+      <Text style={styles.title}>确认识别结果</Text>
+      <Text style={styles.subtitle}>可修正题干、选项和正确答案；保存后再回到上一页确认入库。</Text>
 
       {isLoading && <ActivityIndicator color="#2563EB" size="large" style={styles.loading} />}
       {!!error && <Text style={styles.errorText}>{error}</Text>}
@@ -210,24 +210,24 @@ export default function EditQuestionDraftScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { backgroundColor: ui.colors.background, flexGrow: 1, padding: 20, paddingBottom: 48, paddingTop: 58 },
+  container: { backgroundColor: ui.colors.background, flexGrow: 1, paddingHorizontal: 18, paddingBottom: 48, paddingTop: 54 },
   backText: { color: ui.colors.primary, fontSize: 16, fontWeight: '700' },
-  title: { color: ui.colors.text, fontSize: 29, fontWeight: '800', marginTop: 25 },
+  title: { color: ui.colors.text, fontSize: 23, fontWeight: '800', marginTop: 22 },
   subtitle: { color: ui.colors.mutedText, fontSize: 14, lineHeight: 21, marginTop: 10 },
   loading: { marginTop: 42 },
   errorText: { color: ui.colors.danger, marginTop: 28 },
-  label: { color: ui.colors.text, fontSize: 15, fontWeight: '800', marginTop: 25 },
+  label: { color: ui.colors.text, fontSize: 14, fontWeight: '800', marginTop: 23 },
   typeRow: { flexDirection: 'row', gap: 8, marginTop: 10 },
   typeButton: { backgroundColor: ui.colors.surface, borderColor: ui.colors.border, borderRadius: 10, borderWidth: 1, flex: 1, paddingVertical: 10 },
   typeButtonSelected: { backgroundColor: ui.colors.primary, borderColor: ui.colors.primary },
   typeButtonText: { color: ui.colors.mutedText, fontSize: 12, fontWeight: '800', textAlign: 'center' },
   typeButtonTextSelected: { color: '#FFFFFF' },
-  input: { backgroundColor: ui.colors.surface, borderColor: ui.colors.border, borderRadius: 12, borderWidth: 1, color: ui.colors.text, fontSize: 16, marginTop: 10, minHeight: 52, padding: 13, textAlignVertical: 'top' },
+  input: { backgroundColor: ui.colors.surface, borderColor: '#DDE5F1', borderRadius: 11, borderWidth: 1, color: ui.colors.text, fontSize: 15, marginTop: 9, minHeight: 52, padding: 13, textAlignVertical: 'top' },
   optionRow: { alignItems: 'center', flexDirection: 'row', gap: 10, marginTop: 10 },
   optionKey: { color: ui.colors.primary, fontSize: 16, fontWeight: '800', width: 20 },
-  optionInput: { backgroundColor: ui.colors.surface, borderColor: ui.colors.border, borderRadius: 12, borderWidth: 1, color: ui.colors.text, flex: 1, fontSize: 16, minHeight: 48, padding: 11, textAlignVertical: 'top' },
+  optionInput: { backgroundColor: ui.colors.surface, borderColor: '#DDE5F1', borderRadius: 11, borderWidth: 1, color: ui.colors.text, flex: 1, fontSize: 15, minHeight: 48, padding: 11, textAlignVertical: 'top' },
   answerHint: { color: ui.colors.mutedText, fontSize: 13, marginTop: 8 },
-  answerOption: { alignItems: 'center', backgroundColor: ui.colors.surface, borderColor: ui.colors.border, borderRadius: 12, borderWidth: 1, flexDirection: 'row', marginTop: 10, padding: 13 },
+  answerOption: { alignItems: 'center', backgroundColor: ui.colors.surface, borderColor: '#DDE5F1', borderRadius: 11, borderWidth: 1, flexDirection: 'row', marginTop: 9, padding: 13 },
   answerOptionSelected: { backgroundColor: ui.colors.primarySoft, borderColor: ui.colors.primary },
   answerOptionKey: { color: ui.colors.primary, fontSize: 15, fontWeight: '800', marginRight: 10, width: 22 },
   answerOptionText: { color: ui.colors.text, flex: 1, fontSize: 15 },

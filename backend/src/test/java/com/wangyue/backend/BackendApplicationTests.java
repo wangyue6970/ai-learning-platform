@@ -11,6 +11,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.wangyue.backend.dto.CreateQuestionOptionRequest;
 import com.wangyue.backend.dto.CreateQuestionRequest;
+import com.wangyue.backend.dto.ApiErrorResponse;
 import com.wangyue.backend.dto.RegisterRequest;
 import com.wangyue.backend.dto.ImportFileResponse;
 import com.wangyue.backend.dto.BatchDraftConfirmResponse;
@@ -18,6 +19,7 @@ import com.wangyue.backend.dto.RecognizedQuestion;
 import com.wangyue.backend.dto.RecognizedQuestionOption;
 import com.wangyue.backend.dto.SubmitAnswerRequest;
 import com.wangyue.backend.dto.SubmitAnswerResponse;
+import com.wangyue.backend.exception.AuthenticationException;
 import com.wangyue.backend.entity.AnswerRecord;
 import com.wangyue.backend.entity.AppUser;
 import com.wangyue.backend.entity.LearningLibrary;
@@ -44,6 +46,8 @@ import com.wangyue.backend.service.ImportService;
 import com.wangyue.backend.service.LlmService;
 import com.wangyue.backend.service.WordDocumentService;
 import com.wangyue.backend.service.JwtTokenService;
+import com.wangyue.backend.controller.ApiExceptionHandler;
+import com.wangyue.backend.exception.OperationConflictException;
 import java.awt.Color;
 import java.awt.Font;
 import java.awt.Graphics2D;
@@ -68,6 +72,7 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.mock.web.MockMultipartFile;
+import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
 
@@ -81,6 +86,30 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest(properties = "app.import.processing.enabled=false")
 @AutoConfigureMockMvc
 class BackendApplicationTests {
+
+	@Test
+	void globalExceptionHandlerOnlyExposesSafeMessagesToUsers() {
+		ApiExceptionHandler handler = new ApiExceptionHandler();
+
+		ApiErrorResponse authenticationResponse = handler.handleAuthenticationFailure(
+			new AuthenticationException()
+		);
+		assertEquals("用户名或密码错误", authenticationResponse.getMessage());
+		assertEquals("下一步：请检查用户名和密码后重新登录。", authenticationResponse.getAction());
+
+		ApiErrorResponse conflictResponse = handler.handleOperationConflict(
+			new OperationConflictException("草稿状态已变化，请刷新后重试")
+		);
+		assertEquals("草稿状态已变化，请刷新后重试", conflictResponse.getMessage());
+		assertEquals("下一步：请刷新页面后重试。", conflictResponse.getAction());
+
+		ApiErrorResponse unexpectedResponse = handler.handleUnexpectedException(
+			new IllegalStateException("database password must not reach the app"),
+			new MockHttpServletRequest("POST", "/api/example")
+		);
+		assertEquals("服务暂时异常，请稍后重试", unexpectedResponse.getMessage());
+		assertEquals("下一步：请稍后再次尝试；若持续出现，请联系管理员。", unexpectedResponse.getAction());
+	}
 
 	@Autowired
 	private JdbcTemplate jdbcTemplate;

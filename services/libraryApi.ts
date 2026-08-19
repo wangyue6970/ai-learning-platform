@@ -1,4 +1,4 @@
-import { apiFetch } from './apiClient';
+import { apiFetch, readApiErrorMessage } from './apiClient';
 
 export type Library = {
   id: string;
@@ -14,7 +14,7 @@ export async function fetchLibraries(): Promise<Library[]> {
   const response = await apiFetch('/api/libraries');
 
   if (!response.ok) {
-    throw new Error('学习库加载失败');
+    throw new Error(await readApiErrorMessage(response, '学习库加载失败'));
   }
 
   const libraries: LibraryResponse[] = await response.json();
@@ -30,7 +30,7 @@ export async function createLibrary(name: string): Promise<Library> {
   });
 
   if (!response.ok) {
-    throw new Error('学习库创建失败');
+    throw new Error(await readApiErrorMessage(response, '学习库创建失败'));
   }
 
   return normalizeLibrary(await response.json());
@@ -44,7 +44,7 @@ export async function updateLibrary(id: string, name: string): Promise<Library> 
   });
 
   if (!response.ok) {
-    throw new Error('学习库修改失败');
+    throw new Error(await readApiErrorMessage(response, '学习库修改失败'));
   }
 
   return normalizeLibrary(await response.json());
@@ -56,7 +56,7 @@ export async function deleteLibrary(id: string): Promise<void> {
   });
 
   if (!response.ok) {
-    throw new Error('学习库删除失败');
+    throw new Error(await readApiErrorMessage(response, '学习库删除失败'));
   }
 }
 

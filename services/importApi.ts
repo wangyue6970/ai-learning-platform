@@ -1,6 +1,6 @@
 import { File } from 'expo-file-system';
 import { API_BASE_URL } from './apiConfig';
-import { apiFetch } from './apiClient';
+import { apiFetch, readApiErrorMessage } from './apiClient';
 
 export type ImportFileResult = {
   id: number;
@@ -85,16 +85,7 @@ export async function uploadImportFiles(
   }
 
   if (!response.ok) {
-    let message = '文件上传失败，请稍后重试';
-
-    try {
-      const errorBody: { message?: string } = await response.json();
-      message = errorBody.message || message;
-    } catch {
-      // 后端没有返回可读取的错误内容时，使用默认提示。
-    }
-
-    throw new Error(message);
+    throw new Error(await readApiErrorMessage(response, '文件上传失败，请稍后重试'));
   }
 
   return response.json();
@@ -110,14 +101,7 @@ export async function fetchLatestImportBatch(libraryId: string): Promise<ImportB
   }
 
   if (!response.ok) {
-    let message = '读取导入进度失败，请稍后重试';
-    try {
-      const errorBody: { message?: string } = await response.json();
-      message = errorBody.message || message;
-    } catch {
-      // Keep the default error message when the server does not return JSON.
-    }
-    throw new Error(message);
+    throw new Error(await readApiErrorMessage(response, '读取导入进度失败，请稍后重试'));
   }
 
   return response.json();
@@ -136,14 +120,7 @@ export async function getImportBatchDrafts(
   }
 
   if (!response.ok) {
-    let message = '读取本批次草稿失败，请稍后重试';
-    try {
-      const errorBody: { message?: string } = await response.json();
-      message = errorBody.message || message;
-    } catch {
-      // Keep the default error message when the server does not return JSON.
-    }
-    throw new Error(message);
+    throw new Error(await readApiErrorMessage(response, '读取本批次草稿失败，请稍后重试'));
   }
 
   return response.json();
@@ -162,14 +139,7 @@ export async function getImportFileDrafts(
   }
 
   if (!response.ok) {
-    let message = '读取题目草稿失败，请稍后重试';
-    try {
-      const errorBody: { message?: string } = await response.json();
-      message = errorBody.message || message;
-    } catch {
-      // Keep the default error message when the server does not return JSON.
-    }
-    throw new Error(message);
+    throw new Error(await readApiErrorMessage(response, '读取题目草稿失败，请稍后重试'));
   }
 
   return response.json();
@@ -197,14 +167,7 @@ export async function updateImportFileDraft(
   }
 
   if (!response.ok) {
-    let message = '保存草稿失败，请检查题目内容后重试';
-    try {
-      const errorBody: { message?: string } = await response.json();
-      message = errorBody.message || message;
-    } catch {
-      // Keep the default error message when the server does not return JSON.
-    }
-    throw new Error(message);
+    throw new Error(await readApiErrorMessage(response, '保存草稿失败，请检查题目内容后重试'));
   }
 
   return response.json();
@@ -227,14 +190,7 @@ export async function discardImportFileDraft(
   }
 
   if (!response.ok) {
-    let message = '不入库失败，请稍后重试';
-    try {
-      const errorBody: { message?: string } = await response.json();
-      message = errorBody.message || message;
-    } catch {
-      // Keep the default error message when the server does not return JSON.
-    }
-    throw new Error(message);
+    throw new Error(await readApiErrorMessage(response, '不入库失败，请稍后重试'));
   }
 }
 
@@ -255,14 +211,7 @@ export async function confirmImportFileDraft(
   }
 
   if (!response.ok) {
-    let message = '确认入库失败，请检查草稿内容后重试';
-    try {
-      const errorBody: { message?: string } = await response.json();
-      message = errorBody.message || message;
-    } catch {
-      // Keep the default error message when the server does not return JSON.
-    }
-    throw new Error(message);
+    throw new Error(await readApiErrorMessage(response, '确认入库失败，请检查草稿内容后重试'));
   }
 
   return response.json();
@@ -284,14 +233,7 @@ export async function confirmAllImportBatchDrafts(
   }
 
   if (!response.ok) {
-    let message = '批量确认入库失败，请稍后重试';
-    try {
-      const errorBody: { message?: string } = await response.json();
-      message = errorBody.message || message;
-    } catch {
-      // 后端没有返回可读取的错误内容时，使用默认提示。
-    }
-    throw new Error(message);
+    throw new Error(await readApiErrorMessage(response, '批量确认入库失败，请稍后重试'));
   }
 
   return response.json();

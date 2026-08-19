@@ -1,4 +1,4 @@
-import { apiFetch } from './apiClient';
+import { apiFetch, readApiErrorMessage } from './apiClient';
 
 export type PracticeQuestionType = 'single_choice' | 'multiple_choice' | 'true_false';
 
@@ -62,7 +62,7 @@ export async function fetchQuestionDetail(questionId: string): Promise<EditableQ
   const response = await apiFetch(`/api/questions/${questionId}`);
 
   if (!response.ok) {
-    throw new Error('题目详情加载失败');
+    throw new Error(await readApiErrorMessage(response, '题目详情加载失败'));
   }
 
   const question: QuestionDetailResponse = await response.json();
@@ -84,7 +84,7 @@ export async function updateQuestion(
   });
 
   if (!response.ok) {
-    throw new Error('题目保存失败');
+    throw new Error(await readApiErrorMessage(response, '题目保存失败'));
   }
 
   const question: QuestionDetailResponse = await response.json();
@@ -101,7 +101,7 @@ export async function deleteQuestion(questionId: string): Promise<void> {
   });
 
   if (!response.ok) {
-    throw new Error('题目删除失败');
+    throw new Error(await readApiErrorMessage(response, '题目删除失败'));
   }
 }
 
@@ -117,7 +117,7 @@ export async function submitAnswer(
   });
 
   if (!response.ok) {
-    throw new Error('答案提交失败');
+    throw new Error(await readApiErrorMessage(response, '答案提交失败'));
   }
 
   return response.json();
@@ -127,7 +127,7 @@ async function fetchQuestions(path: string): Promise<PracticeQuestion[]> {
   const response = await apiFetch(path);
 
   if (!response.ok) {
-    throw new Error('题目加载失败');
+    throw new Error(await readApiErrorMessage(response, '题目加载失败'));
   }
 
   const questions: PracticeQuestionResponse[] = await response.json();
