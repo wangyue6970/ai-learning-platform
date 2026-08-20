@@ -11,7 +11,6 @@ public class ImportFileResponse {
     private Integer generatedDraftCount;
     private Integer estimatedQuestionCount;
     private Integer needsReviewDraftCount;
-    private Boolean wordFastParsed;
 
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }
@@ -31,6 +30,4 @@ public class ImportFileResponse {
     public void setEstimatedQuestionCount(Integer estimatedQuestionCount) { this.estimatedQuestionCount = estimatedQuestionCount; }
     public Integer getNeedsReviewDraftCount() { return needsReviewDraftCount; }
     public void setNeedsReviewDraftCount(Integer needsReviewDraftCount) { this.needsReviewDraftCount = needsReviewDraftCount; }
-    public Boolean getWordFastParsed() { return wordFastParsed; }
-    public void setWordFastParsed(Boolean wordFastParsed) { this.wordFastParsed = wordFastParsed; }
 }

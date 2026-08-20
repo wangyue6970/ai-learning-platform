@@ -22,7 +22,6 @@ export type ImportFileResult = {
   generatedDraftCount: number;
   estimatedQuestionCount: number;
   needsReviewDraftCount: number;
-  wordFastParsed: boolean;
 };
 
 export type ImportBatchResult = {

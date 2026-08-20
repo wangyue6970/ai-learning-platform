@@ -62,13 +62,9 @@ function getChunkProgressText(file: ImportFileResult) {
   const completedChunks = file.completedChunkCount ?? 0;
   const generatedDrafts = file.generatedDraftCount ?? 0;
   const estimatedQuestions = file.estimatedQuestionCount ?? 0;
-  const batchText = file.wordFastParsed
-    ? (file.status === 'STRUCTURING' && completedChunks < totalChunks
-      ? `正在快速整理第 ${completedChunks + 1} / ${totalChunks} 题`
-      : `已快速整理 ${completedChunks} / ${totalChunks} 题`)
-    : (file.status === 'STRUCTURING' && completedChunks < totalChunks
-      ? `正在处理第 ${completedChunks + 1} / ${totalChunks} 批`
-      : `已完成 ${completedChunks} / ${totalChunks} 批`);
+  const batchText = file.status === 'STRUCTURING' && completedChunks < totalChunks
+    ? `正在处理第 ${completedChunks + 1} / ${totalChunks} 批`
+    : `已完成 ${completedChunks} / ${totalChunks} 批`;
   const estimateText = estimatedQuestions > 0 ? ` · 原文约 ${estimatedQuestions} 题` : '';
   return `${batchText} · 已生成 ${generatedDrafts} 道草稿${estimateText}`;
 }
@@ -257,8 +253,8 @@ export default function ImportQuestionsScreen() {
       await reparseWordImportFile(id, file.id);
       await loadLatestBatch();
       showDialog({
-        title: '已按新规则重新整理',
-        message: '旧的未确认草稿已替换，后台正在按 Word 的实际选项和答案格式重新生成。',
+        title: '已开始用 AI 重新识别',
+        message: '旧的未确认草稿已替换，后台会按每 3 道题一批重新理解 Word 内容。',
         tone: 'success',
       });
     } catch (error) {
@@ -410,8 +406,7 @@ export default function ImportQuestionsScreen() {
                   </Text>
                 </Pressable>
               )}
-              {file.wordFastParsed
-                && file.status === 'WAITING_CONFIRMATION'
+              {file.status === 'WAITING_CONFIRMATION'
                 && (file.generatedDraftCount || 0) > 0
                 && file.needsReviewDraftCount === file.generatedDraftCount && (
                 <Pressable
@@ -419,7 +414,7 @@ export default function ImportQuestionsScreen() {
                   style={[styles.structureButton, retryingFileId !== null && styles.retryButtonDisabled]}
                   onPress={() => void reparseWordFile(file)}>
                   <Text style={styles.structureButtonText}>
-                    {retryingFileId === file.id ? '正在重新整理…' : '按新 Word 格式重新整理'}
+                    {retryingFileId === file.id ? '正在重新识别…' : '用 AI 重新识别 Word'}
                   </Text>
                 </Pressable>
               )}

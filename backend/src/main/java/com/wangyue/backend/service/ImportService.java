@@ -48,7 +48,11 @@ public class ImportService {
     private final QuestionDraftMapper questionDraftMapper;
     private final QuestionDraftOptionMapper questionDraftOptionMapper;
     private final ObjectMapper objectMapper;
-    private static final int WORD_FAST_PARSE_SAVE_SIZE = 25;
+    // Keep Word requests deliberately small. Local models understand mixed
+    // formats (single choice, judgment, fill-in notes) much better when they
+    // only need to structure a few original questions at a time.
+    private static final int WORD_LLM_QUESTIONS_PER_CHUNK = 3;
+    private static final int WORD_LLM_MAX_CHARACTERS_PER_CHUNK = 4_800;
 
     public ImportService(
         LearningLibraryService learningLibraryService,
@@ -425,9 +429,9 @@ public class ImportService {
     }
 
     /**
-     * Replaces unconfirmed Word drafts after the local parser itself has been
-     * improved. Confirmed or discarded user decisions are deliberately never
-     * overwritten.
+     * Replaces unconfirmed Word drafts by asking the local AI to understand
+     * the original text again. Confirmed or discarded user decisions are
+     * deliberately never overwritten.
      */
     @Transactional
     public ImportFileResponse reparseWordFile(Long libraryId, Long importFileId) {
@@ -467,35 +471,34 @@ public class ImportService {
     }
 
     /**
-     * Word already contains selectable text, so parse its question number /
-     * option / answer structure locally first. This avoids hundreds of slow
-     * local-AI calls. We save every 25 parsed questions to keep real progress
-     * visible and to preserve anything completed before an unexpected failure.
+     * Word text can contain more than the normal A/B/C/D layout, such as
+     * judgment marks, fill-in answers and explanations in brackets. Restore
+     * the local-AI path for Word so those formats are understood semantically.
+     * Each finished chunk is saved immediately, so progress remains visible.
      */
     private void structureWordDocumentInChunks(ImportFile importFile) {
-        WordDocumentService.ParsedQuestions parsedDocument = wordDocumentService.parseStructuredQuestions(
-            importFile.getRecognitionText()
+        WordDocumentService.QuestionTextChunks chunks = wordDocumentService.splitQuestionText(
+            importFile.getRecognitionText(), WORD_LLM_QUESTIONS_PER_CHUNK, WORD_LLM_MAX_CHARACTERS_PER_CHUNK
         );
-        List<com.wangyue.backend.dto.RecognizedQuestion> parsedQuestions = parsedDocument.questions();
-        int savedQuestionCount = generatedDraftCount(importFile);
-        boolean canResume = savedQuestionCount > 0 && savedQuestionCount < parsedQuestions.size();
+        int completedChunkCount = importFile.getCompletedChunkCount() == null ? 0 : importFile.getCompletedChunkCount();
+        boolean canResume = completedChunkCount > 0 && completedChunkCount < chunks.chunks().size();
         if (!canResume) {
-            savedQuestionCount = 0;
+            completedChunkCount = 0;
             importFile.setCompletedChunkCount(0);
             importFile.setGeneratedDraftCount(0);
         }
-        importFile.setTotalChunkCount(parsedQuestions.size());
-        importFile.setCompletedChunkCount(savedQuestionCount);
-        importFile.setEstimatedQuestionCount(parsedDocument.estimatedQuestionCount());
+        importFile.setTotalChunkCount(chunks.chunks().size());
+        importFile.setCompletedChunkCount(completedChunkCount);
+        importFile.setEstimatedQuestionCount(chunks.estimatedQuestionCount());
         importFileMapper.updateById(importFile);
 
-        for (int startIndex = savedQuestionCount; startIndex < parsedQuestions.size(); startIndex += WORD_FAST_PARSE_SAVE_SIZE) {
-            int endIndex = Math.min(startIndex + WORD_FAST_PARSE_SAVE_SIZE, parsedQuestions.size());
+        for (int chunkIndex = completedChunkCount; chunkIndex < chunks.chunks().size(); chunkIndex++) {
             int savedCount = questionDraftService.appendRecognitionResult(
-                importFile.getId(), parsedQuestions.subList(startIndex, endIndex), generatedDraftCount(importFile) + 1
+                importFile.getId(), llmService.structureQuestions(chunks.chunks().get(chunkIndex)),
+                generatedDraftCount(importFile) + 1
             );
             importFile.setGeneratedDraftCount(generatedDraftCount(importFile) + savedCount);
-            importFile.setCompletedChunkCount(generatedDraftCount(importFile));
+            importFile.setCompletedChunkCount(chunkIndex + 1);
             importFileMapper.updateById(importFile);
         }
 
@@ -716,7 +719,6 @@ public class ImportService {
         response.setCompletedChunkCount(importFile.getCompletedChunkCount());
         response.setGeneratedDraftCount(importFile.getGeneratedDraftCount());
         response.setEstimatedQuestionCount(importFile.getEstimatedQuestionCount());
-        response.setWordFastParsed(isWordDocument(importFile));
         response.setNeedsReviewDraftCount(Math.toIntExact(questionDraftMapper.selectCount(
             new LambdaQueryWrapper<QuestionDraft>()
                 .eq(QuestionDraft::getImportFileId, importFile.getId())
