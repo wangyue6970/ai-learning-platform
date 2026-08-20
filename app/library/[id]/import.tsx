@@ -6,6 +6,8 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useLibraries } from '../../../contexts/LibraryContext';
 import {
   fetchLatestImportBatch,
+  reparseWordImportFile,
+  retryFailedImportFile,
   type ImportBatchResult,
   type ImportFileResult,
   uploadImportFiles,
@@ -51,6 +53,34 @@ function getImportStatusText(file: ImportFileResult) {
   }
 }
 
+function hasChunkProgress(file: ImportFileResult) {
+  return (file.totalChunkCount ?? 0) > 0;
+}
+
+function getChunkProgressText(file: ImportFileResult) {
+  const totalChunks = file.totalChunkCount ?? 0;
+  const completedChunks = file.completedChunkCount ?? 0;
+  const generatedDrafts = file.generatedDraftCount ?? 0;
+  const estimatedQuestions = file.estimatedQuestionCount ?? 0;
+  const batchText = file.wordFastParsed
+    ? (file.status === 'STRUCTURING' && completedChunks < totalChunks
+      ? `正在快速整理第 ${completedChunks + 1} / ${totalChunks} 题`
+      : `已快速整理 ${completedChunks} / ${totalChunks} 题`)
+    : (file.status === 'STRUCTURING' && completedChunks < totalChunks
+      ? `正在处理第 ${completedChunks + 1} / ${totalChunks} 批`
+      : `已完成 ${completedChunks} / ${totalChunks} 批`);
+  const estimateText = estimatedQuestions > 0 ? ` · 原文约 ${estimatedQuestions} 题` : '';
+  return `${batchText} · 已生成 ${generatedDrafts} 道草稿${estimateText}`;
+}
+
+function getChunkProgressPercentage(file: ImportFileResult) {
+  const totalChunks = file.totalChunkCount ?? 0;
+  if (totalChunks === 0) {
+    return 0;
+  }
+  return Math.min(100, Math.round(((file.completedChunkCount ?? 0) / totalChunks) * 100));
+}
+
 function getBatchSummary(files: ImportFileResult[]) {
   const processingCount = files.filter(isProcessingFile).length;
   const readyCount = files.filter((file) => file.status === 'WAITING_CONFIRMATION').length;
@@ -59,7 +89,8 @@ function getBatchSummary(files: ImportFileResult[]) {
   const failedCount = files.filter((file) =>
     ['RECOGNITION_FAILED', 'STRUCTURING_FAILED', 'UPLOAD_FAILED'].includes(file.status)
   ).length;
-  return `共 ${files.length} 个文件：处理中 ${processingCount}，待确认 ${readyCount}，已确认 ${confirmedCount}，不入库 ${discardedCount}，失败 ${failedCount}`;
+  const needsReviewCount = files.reduce((total, file) => total + (file.needsReviewDraftCount || 0), 0);
+  return `共 ${files.length} 个文件：处理中 ${processingCount}，待修正 ${needsReviewCount}，待确认 ${readyCount}，已确认 ${confirmedCount}，不入库 ${discardedCount}，失败 ${failedCount}`;
 }
 
 export default function ImportQuestionsScreen() {
@@ -72,6 +103,7 @@ export default function ImportQuestionsScreen() {
   const [latestBatch, setLatestBatch] = useState<ImportBatchResult | null>(null);
   const [isLoadingBatch, setIsLoadingBatch] = useState(true);
   const [batchLoadError, setBatchLoadError] = useState<string | null>(null);
+  const [retryingFileId, setRetryingFileId] = useState<number | null>(null);
 
   const loadLatestBatch = useCallback(async () => {
     if (!id) {
@@ -191,6 +223,55 @@ export default function ImportQuestionsScreen() {
     }
   }
 
+  async function retryFailedFile(file: ImportFileResult) {
+    if (retryingFileId !== null) {
+      return;
+    }
+
+    setRetryingFileId(file.id);
+    try {
+      await retryFailedImportFile(id, file.id);
+      await loadLatestBatch();
+      showDialog({
+        title: '已重新开始处理',
+        message: '原文件无需重新上传。后台会从未完成的位置继续处理。',
+        tone: 'success',
+      });
+    } catch (error) {
+      showDialog({
+        title: '重新处理失败',
+        message: error instanceof Error ? error.message : '请稍后重试',
+        tone: 'danger',
+      });
+    } finally {
+      setRetryingFileId(null);
+    }
+  }
+
+  async function reparseWordFile(file: ImportFileResult) {
+    if (retryingFileId !== null) {
+      return;
+    }
+    setRetryingFileId(file.id);
+    try {
+      await reparseWordImportFile(id, file.id);
+      await loadLatestBatch();
+      showDialog({
+        title: '已按新规则重新整理',
+        message: '旧的未确认草稿已替换，后台正在按 Word 的实际选项和答案格式重新生成。',
+        tone: 'success',
+      });
+    } catch (error) {
+      showDialog({
+        title: '重新整理失败',
+        message: error instanceof Error ? error.message : '请稍后重试',
+        tone: 'danger',
+      });
+    } finally {
+      setRetryingFileId(null);
+    }
+  }
+
   if (!library) {
     return <Text style={styles.emptyText}>学习库不存在。</Text>;
   }
@@ -276,11 +357,37 @@ export default function ImportQuestionsScreen() {
               <Text style={styles.batchDraftButtonText}>集中查看本批次草稿</Text>
             </Pressable>
           )}
+          {!latestBatch.files.some(isProcessingFile) && latestBatch.files.some((file) => (file.needsReviewDraftCount || 0) > 0) && (
+            <Pressable
+              style={styles.reviewDraftButton}
+              onPress={() => router.push({
+                pathname: '/library/[id]/drafts',
+                params: { id, importBatchId: String(latestBatch.id), filter: 'needs_review' },
+              })}>
+              <Text style={styles.reviewDraftButtonText}>
+                集中修正 {latestBatch.files.reduce((total, file) => total + (file.needsReviewDraftCount || 0), 0)} 道问题题目
+              </Text>
+            </Pressable>
+          )}
           {latestBatch.files.map((file) => (
             <View key={file.id} style={styles.resultCard}>
               <View style={styles.fileIcon}><Text style={styles.fileIconText}>{file.originalFileName.toLowerCase().endsWith('.docx') ? 'W' : '▧'}</Text></View>
               <View style={styles.resultInfo}>
                 <View style={styles.resultTopRow}><Text numberOfLines={2} style={styles.fileName}>{file.originalFileName}</Text><Text style={styles.statusPill}>{getImportStatusText(file)}</Text></View>
+              {hasChunkProgress(file) && (
+                <View style={styles.chunkProgressBox}>
+                  <Text style={styles.chunkProgressText}>{getChunkProgressText(file)}</Text>
+                  <View style={styles.chunkProgressTrack}>
+                    <View style={[styles.chunkProgressFill, { width: `${getChunkProgressPercentage(file)}%` }]} />
+                  </View>
+                </View>
+              )}
+              {file.errorMessage && ['WAITING_CONFIRMATION', 'STRUCTURING_FAILED'].includes(file.status) && (
+                <Text style={styles.fileErrorText}>{file.errorMessage}</Text>
+              )}
+              {(file.needsReviewDraftCount || 0) > 0 && (
+                <Text style={styles.reviewHint}>有 {file.needsReviewDraftCount} 道题需要补充或修正后才能入库</Text>
+              )}
               {file.status === 'WAITING_CONFIRMATION' && (
                 <Pressable
                   style={styles.structureButton}
@@ -289,6 +396,43 @@ export default function ImportQuestionsScreen() {
                     params: { id, importFileId: String(file.id) },
                   })}>
                   <Text style={styles.structureButtonText}>查看题目草稿</Text>
+                </Pressable>
+              )}
+              {['RECOGNITION_FAILED', 'STRUCTURING_FAILED'].includes(file.status) && (
+                <Pressable
+                  disabled={retryingFileId !== null}
+                  style={[styles.structureButton, retryingFileId !== null && styles.retryButtonDisabled]}
+                  onPress={() => void retryFailedFile(file)}>
+                  <Text style={styles.structureButtonText}>
+                    {retryingFileId === file.id
+                      ? '正在重新开始…'
+                      : file.status === 'STRUCTURING_FAILED' ? '按新规则重新生成' : '重新识别文件'}
+                  </Text>
+                </Pressable>
+              )}
+              {file.wordFastParsed
+                && file.status === 'WAITING_CONFIRMATION'
+                && (file.generatedDraftCount || 0) > 0
+                && file.needsReviewDraftCount === file.generatedDraftCount && (
+                <Pressable
+                  disabled={retryingFileId !== null}
+                  style={[styles.structureButton, retryingFileId !== null && styles.retryButtonDisabled]}
+                  onPress={() => void reparseWordFile(file)}>
+                  <Text style={styles.structureButtonText}>
+                    {retryingFileId === file.id ? '正在重新整理…' : '按新 Word 格式重新整理'}
+                  </Text>
+                </Pressable>
+              )}
+              {file.status === 'WAITING_CONFIRMATION'
+                && !!file.errorMessage
+                && (file.completedChunkCount || 0) < (file.totalChunkCount || 0) && (
+                <Pressable
+                  disabled={retryingFileId !== null}
+                  style={[styles.structureButton, retryingFileId !== null && styles.retryButtonDisabled]}
+                  onPress={() => void retryFailedFile(file)}>
+                  <Text style={styles.structureButtonText}>
+                    {retryingFileId === file.id ? '正在继续处理…' : '继续处理剩余题目'}
+                  </Text>
                 </Pressable>
               )}
               </View>
@@ -329,11 +473,20 @@ const styles = StyleSheet.create({
   pendingPill: { backgroundColor: '#FFF1D9', borderRadius: 10, color: '#B46908', fontSize: 10, fontWeight: '800', marginLeft: 8, overflow: 'hidden', paddingHorizontal: 7, paddingVertical: 4 },
   batchSummaryCard: { backgroundColor: ui.colors.primarySoft, borderRadius: 12, marginTop: 10, padding: 12 },
   batchSummaryTitle: { color: ui.colors.primary, fontSize: 12, fontWeight: '800', marginBottom: 4 },
+  reviewDraftButton: { alignItems: 'center', backgroundColor: '#FFF7E8', borderColor: '#F5C46B', borderRadius: 12, borderWidth: 1, marginTop: 9, paddingVertical: 13 },
+  reviewDraftButtonText: { color: '#A85C00', fontSize: 14, fontWeight: '800' },
   resultCard: { alignItems: 'flex-start', backgroundColor: ui.colors.surface, borderColor: '#EDF0F6', borderRadius: 13, borderWidth: 1, flexDirection: 'row', marginTop: 9, padding: 11, ...ui.subtleShadow },
   resultInfo: { flex: 1 },
   resultTopRow: { alignItems: 'flex-start', flexDirection: 'row', gap: 8 },
   statusPill: { backgroundColor: ui.colors.primarySoft, borderRadius: 8, color: ui.colors.primary, flexShrink: 1, fontSize: 10, fontWeight: '700', overflow: 'hidden', paddingHorizontal: 7, paddingVertical: 4 },
+  reviewHint: { color: '#A85C00', fontSize: 12, fontWeight: '700', lineHeight: 18, marginTop: 8 },
+  chunkProgressBox: { marginTop: 9 },
+  chunkProgressText: { color: ui.colors.mutedText, fontSize: 11, lineHeight: 17 },
+  chunkProgressTrack: { backgroundColor: '#DCE6F8', borderRadius: 4, height: 6, marginTop: 6, overflow: 'hidden' },
+  chunkProgressFill: { backgroundColor: ui.colors.primary, borderRadius: 4, height: '100%' },
+  fileErrorText: { color: ui.colors.danger, fontSize: 11, lineHeight: 17, marginTop: 8 },
   structureButton: { alignItems: 'center', borderColor: '#B7CDFC', borderRadius: 10, borderWidth: 1, marginTop: 12, paddingVertical: 10 },
+  retryButtonDisabled: { opacity: 0.55 },
   structureButtonText: { color: ui.colors.primary, fontSize: 13, fontWeight: '800' },
   batchDraftButton: { alignItems: 'center', backgroundColor: ui.colors.primary, borderRadius: ui.radius.button, marginTop: 12, paddingVertical: 14, ...ui.shadow },
   batchDraftButtonText: { color: '#FFFFFF', fontSize: 14, fontWeight: '800' },

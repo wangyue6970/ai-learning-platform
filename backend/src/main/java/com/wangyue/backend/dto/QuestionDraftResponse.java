@@ -14,6 +14,7 @@ public class QuestionDraftResponse {
     private List<String> correctAnswer;
     private String explanation;
     private List<String> knowledgePoints;
+    private String issueReason;
     private List<QuestionDraftOptionResponse> options;
 
     public Long getId() { return id; }
@@ -34,6 +35,8 @@ public class QuestionDraftResponse {
     public void setExplanation(String explanation) { this.explanation = explanation; }
     public List<String> getKnowledgePoints() { return knowledgePoints; }
     public void setKnowledgePoints(List<String> knowledgePoints) { this.knowledgePoints = knowledgePoints; }
+    public String getIssueReason() { return issueReason; }
+    public void setIssueReason(String issueReason) { this.issueReason = issueReason; }
     public List<QuestionDraftOptionResponse> getOptions() { return options; }
     public void setOptions(List<QuestionDraftOptionResponse> options) { this.options = options; }
 }

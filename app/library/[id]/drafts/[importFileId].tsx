@@ -82,12 +82,15 @@ export default function QuestionDraftsScreen() {
       )}
 
       {drafts.map((draft) => (
-        <View key={draft.id} style={styles.draftCard}>
+          <View key={draft.id} style={styles.draftCard}>
           <View style={styles.draftHeader}>
             <Text style={styles.draftNumber}>第 {draft.sortOrder} 题</Text>
-            <Text style={styles.typeBadge}>{questionTypeText[draft.questionType]}</Text>
+            <Text style={[styles.typeBadge, draft.status === 'NEEDS_REVIEW' && styles.reviewTypeBadge]}>
+              {draft.status === 'NEEDS_REVIEW' ? '需要修正' : questionTypeText[draft.questionType]}
+            </Text>
           </View>
           <Text style={styles.stem}>{draft.stem}</Text>
+          {!!draft.issueReason && <Text style={styles.issueText}>问题：{draft.issueReason}</Text>}
 
           {draft.options.map((option) => (
             <Text key={option.optionKey} style={styles.option}>
@@ -100,6 +103,15 @@ export default function QuestionDraftsScreen() {
           {!!draft.explanation && <Text style={styles.explanation}>解析：{draft.explanation}</Text>}
           {draft.status === 'CONFIRMED' ? (
             <Text style={styles.confirmedText}>已正式入库</Text>
+          ) : draft.status === 'NEEDS_REVIEW' ? (
+            <Pressable
+              style={styles.editButton}
+              onPress={() => router.push({
+                pathname: '/library/[id]/drafts/[importFileId]/[draftId]',
+                params: { id, importFileId, draftId: String(draft.id) },
+              })}>
+              <Text style={styles.editButtonText}>去修正这道题</Text>
+            </Pressable>
           ) : (
             <View style={styles.buttonRow}>
               <Pressable
@@ -148,11 +160,13 @@ const styles = StyleSheet.create({
   draftHeader: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between' },
   draftNumber: { color: ui.colors.mutedText, fontSize: 12, fontWeight: '800' },
   typeBadge: { backgroundColor: ui.colors.primarySoft, borderRadius: 8, color: ui.colors.primary, fontSize: 12, fontWeight: '800', paddingHorizontal: 8, paddingVertical: 4 },
+  reviewTypeBadge: { backgroundColor: '#FFF1D9', color: '#A85C00' },
   stem: { color: ui.colors.text, fontSize: 16, fontWeight: '800', lineHeight: 24, marginTop: 11 },
   option: { color: ui.colors.mutedText, fontSize: 14, lineHeight: 21, marginTop: 9 },
   label: { color: ui.colors.mutedText, fontSize: 12, fontWeight: '800', marginTop: 16 },
   value: { color: ui.colors.text, fontSize: 15, fontWeight: '800', marginTop: 5 },
   explanation: { color: ui.colors.mutedText, fontSize: 13, lineHeight: 20, marginTop: 12 },
+  issueText: { backgroundColor: '#FFF8EB', borderRadius: 9, color: '#A85C00', fontSize: 12, fontWeight: '700', lineHeight: 18, marginTop: 12, padding: 10 },
   buttonRow: { flexDirection: 'row', gap: 9, marginTop: 17 },
   editButton: { alignItems: 'center', borderColor: '#B7CDFC', borderRadius: 10, borderWidth: 1, flex: 1, paddingVertical: 11 },
   editButtonText: { color: ui.colors.primary, fontSize: 14, fontWeight: '800' },

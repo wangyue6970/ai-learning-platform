@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useState, type Dispatch, type ReactNode, type SetStateAction } from 'react';
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type Dispatch, type ReactNode, type SetStateAction } from 'react';
 import { useAuth } from './AuthContext';
 import { createLibrary as createLibraryRequest, deleteLibrary as deleteLibraryRequest, fetchLibraries, type Library, updateLibrary as updateLibraryRequest } from '../services/libraryApi';
 
@@ -20,8 +20,12 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
   const [libraries, setLibraries] = useState<Library[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const latestLoadId = useRef(0);
 
   const reloadLibraries = useCallback(async () => {
+    const loadId = latestLoadId.current + 1;
+    latestLoadId.current = loadId;
+
     if (!accessToken) {
       setLibraries([]);
       setError(null);
@@ -33,15 +37,23 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
     setError(null);
 
     try {
-      setLibraries(await fetchLibraries());
+      const loadedLibraries = await fetchLibraries();
+
+      if (latestLoadId.current === loadId) {
+        setLibraries(loadedLibraries);
+      }
     } catch (loadError) {
-      setError(loadError instanceof Error
-        ? loadError.message
-        : '无法连接后端，请检查电脑和手机是否在同一 Wi-Fi。');
+      if (latestLoadId.current === loadId) {
+        setError(loadError instanceof Error
+          ? loadError.message
+          : '无法连接后端，请检查电脑和手机是否在同一 Wi-Fi。');
+      }
     } finally {
-      setIsLoading(false);
+      if (latestLoadId.current === loadId) {
+        setIsLoading(false);
+      }
     }
-  }, []);
+  }, [accessToken]);
 
   const createLibrary = useCallback(async (name: string) => {
     const library = await createLibraryRequest(name);
@@ -57,8 +69,9 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
 
   const deleteLibrary = useCallback(async (id: string) => {
     await deleteLibraryRequest(id);
-    setLibraries((currentLibraries) => currentLibraries.filter((library) => library.id !== id));
-  }, [accessToken]);
+    // 以服务器返回的列表为准：删除成功后立即复查，避免返回上一页时显示旧缓存。
+    await reloadLibraries();
+  }, [reloadLibraries]);
 
   useEffect(() => {
     if (!isRestoringSession) {

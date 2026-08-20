@@ -17,6 +17,12 @@ export type ImportFileResult = {
     | 'STRUCTURING_FAILED'
     | 'UPLOAD_FAILED';
   errorMessage: string | null;
+  totalChunkCount: number;
+  completedChunkCount: number;
+  generatedDraftCount: number;
+  estimatedQuestionCount: number;
+  needsReviewDraftCount: number;
+  wordFastParsed: boolean;
 };
 
 export type ImportBatchResult = {
@@ -42,6 +48,7 @@ export type QuestionDraft = {
   correctAnswer: string[];
   explanation: string | null;
   knowledgePoints: string[];
+  issueReason: string | null;
   options: QuestionDraftOption[];
 };
 
@@ -104,6 +111,48 @@ export async function fetchLatestImportBatch(libraryId: string): Promise<ImportB
     throw new Error(await readApiErrorMessage(response, '读取导入进度失败，请稍后重试'));
   }
 
+  return response.json();
+}
+
+export async function retryFailedImportFile(
+  libraryId: string,
+  importFileId: number
+): Promise<ImportFileResult> {
+  let response: Response;
+
+  try {
+    response = await apiFetch(
+      `/api/libraries/${libraryId}/import-batches/files/${importFileId}/retry`,
+      { method: 'POST' }
+    );
+  } catch {
+    throw new Error('无法连接题目生成服务，请检查电脑后端是否正在运行');
+  }
+
+  if (!response.ok) {
+    throw new Error(await readApiErrorMessage(response, '重新生成题目失败，请稍后重试'));
+  }
+
+  return response.json();
+}
+
+export async function reparseWordImportFile(
+  libraryId: string,
+  importFileId: number
+): Promise<ImportFileResult> {
+  let response: Response;
+  try {
+    response = await apiFetch(
+      `/api/libraries/${libraryId}/import-batches/files/${importFileId}/reparse-word`,
+      { method: 'POST' }
+    );
+  } catch {
+    throw new Error('无法连接重新整理服务，请检查电脑后端是否正在运行');
+  }
+
+  if (!response.ok) {
+    throw new Error(await readApiErrorMessage(response, '按新规则重新整理失败，请稍后重试'));
+  }
   return response.json();
 }
 

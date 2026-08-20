@@ -19,10 +19,11 @@ const questionTypes: { value: DraftQuestionType; label: string }[] = [
 ];
 
 export default function EditQuestionDraftScreen() {
-  const { id, importFileId, draftId } = useLocalSearchParams<{
+  const { id, importFileId, draftId, returnToBatchId } = useLocalSearchParams<{
     id: string;
     importFileId: string;
     draftId: string;
+    returnToBatchId?: string;
   }>();
   const { showDialog } = useDialog();
   const [questionType, setQuestionType] = useState<DraftQuestionType>('SINGLE_CHOICE');
@@ -116,10 +117,15 @@ export default function EditQuestionDraftScreen() {
         title: '草稿已保存',
         message: '这道题仍是草稿，尚未进入正式题库。',
         tone: 'success',
-        onPrimary: () => router.replace({
-          pathname: '/library/[id]/drafts/[importFileId]',
-          params: { id, importFileId },
-        }),
+        onPrimary: () => router.replace(returnToBatchId
+          ? {
+              pathname: '/library/[id]/drafts',
+              params: { id, importBatchId: returnToBatchId, filter: 'needs_review' },
+            }
+          : {
+              pathname: '/library/[id]/drafts/[importFileId]',
+              params: { id, importFileId },
+            }),
       });
     } catch (saveError) {
       const message = saveError instanceof Error ? saveError.message : '保存草稿失败，请稍后重试';

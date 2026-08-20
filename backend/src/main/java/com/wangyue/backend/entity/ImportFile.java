@@ -18,6 +18,10 @@ public class ImportFile {
     private String status;
     private String errorMessage;
     private String recognitionText;
+    private Integer totalChunkCount;
+    private Integer completedChunkCount;
+    private Integer generatedDraftCount;
+    private Integer estimatedQuestionCount;
     private LocalDateTime createdAt;
 
     public Long getId() { return id; }
@@ -38,6 +42,14 @@ public class ImportFile {
     public void setErrorMessage(String errorMessage) { this.errorMessage = errorMessage; }
     public String getRecognitionText() { return recognitionText; }
     public void setRecognitionText(String recognitionText) { this.recognitionText = recognitionText; }
+    public Integer getTotalChunkCount() { return totalChunkCount; }
+    public void setTotalChunkCount(Integer totalChunkCount) { this.totalChunkCount = totalChunkCount; }
+    public Integer getCompletedChunkCount() { return completedChunkCount; }
+    public void setCompletedChunkCount(Integer completedChunkCount) { this.completedChunkCount = completedChunkCount; }
+    public Integer getGeneratedDraftCount() { return generatedDraftCount; }
+    public void setGeneratedDraftCount(Integer generatedDraftCount) { this.generatedDraftCount = generatedDraftCount; }
+    public Integer getEstimatedQuestionCount() { return estimatedQuestionCount; }
+    public void setEstimatedQuestionCount(Integer estimatedQuestionCount) { this.estimatedQuestionCount = estimatedQuestionCount; }
     public LocalDateTime getCreatedAt() { return createdAt; }
     public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
 }

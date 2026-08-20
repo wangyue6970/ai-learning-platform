@@ -6,6 +6,7 @@ import com.wangyue.backend.mapper.LearningLibraryMapper;
 import java.util.List;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class LearningLibraryService {
@@ -68,9 +69,13 @@ public class LearningLibraryService {
         return library;
     }
 
+    @Transactional
     public void delete(Long id, Long currentUserId) {
         LearningLibrary library = findOwnedById(id, currentUserId);
-        learningLibraryMapper.deleteById(id);
+        int deletedCount = learningLibraryMapper.deleteById(library.getId());
+        if (deletedCount != 1) {
+            throw new IllegalStateException("学习库删除失败，请刷新后重试");
+        }
     }
 
     private Long requireCurrentUserId(Long currentUserId) {

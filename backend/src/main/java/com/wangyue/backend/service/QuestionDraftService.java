@@ -15,8 +15,12 @@ import com.wangyue.backend.mapper.ImportBatchMapper;
 import com.wangyue.backend.mapper.QuestionDraftMapper;
 import com.wangyue.backend.mapper.QuestionDraftOptionMapper;
 import com.wangyue.backend.dto.CreateQuestionRequest;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -71,18 +75,43 @@ public class QuestionDraftService {
             throw new IllegalArgumentException("未识别出可确认的题目");
         }
 
-        for (RecognizedQuestion question : recognizedQuestions) {
-            validateRecognizedQuestion(question);
-        }
-
         importFile.setRecognitionText(recognitionText);
         importFile.setStatus("WAITING_CONFIRMATION");
         importFile.setErrorMessage(null);
         importFileMapper.updateById(importFile);
 
-        for (int questionIndex = 0; questionIndex < recognizedQuestions.size(); questionIndex++) {
-            saveDraft(importFile, recognizedQuestions.get(questionIndex), questionIndex + 1);
+        appendRecognitionResult(importFileId, recognizedQuestions, 1);
+    }
+
+    /**
+     * Saves one finished LLM chunk immediately. Unlike saveRecognitionResult,
+     * this never changes the file state, because a larger Word document may
+     * still have later chunks processing.
+     */
+    @Transactional
+    public int appendRecognitionResult(
+        Long importFileId,
+        List<RecognizedQuestion> recognizedQuestions,
+        int firstSortOrder
+    ) {
+        if (recognizedQuestions == null || recognizedQuestions.isEmpty()) {
+            return 0;
         }
+        if (firstSortOrder < 1) {
+            throw new IllegalArgumentException("草稿排序号必须大于 0");
+        }
+
+        ImportFile importFile = importFileMapper.selectById(importFileId);
+        if (importFile == null) {
+            throw new IllegalArgumentException("导入文件不存在");
+        }
+        for (int questionIndex = 0; questionIndex < recognizedQuestions.size(); questionIndex++) {
+            // One malformed AI result is saved as a visible repairable draft;
+            // it must not block the remaining questions in a large Word file.
+            saveDraft(importFile, prepareRecognizedQuestion(recognizedQuestions.get(questionIndex)),
+                firstSortOrder + questionIndex);
+        }
+        return recognizedQuestions.size();
     }
 
     /**
@@ -100,7 +129,7 @@ public class QuestionDraftService {
             || !importFileId.equals(draft.getImportFileId())) {
             throw new IllegalArgumentException("题目草稿不属于当前学习库或导入文件");
         }
-        if (!"WAITING_CONFIRMATION".equals(draft.getStatus())) {
+        if (!"WAITING_CONFIRMATION".equals(draft.getStatus()) && !"NEEDS_REVIEW".equals(draft.getStatus())) {
             throw new OperationConflictException("草稿状态已变化，请刷新后重试");
         }
 
@@ -110,6 +139,8 @@ public class QuestionDraftService {
         draft.setCorrectAnswer(toJsonOrNull(request.getCorrectAnswer()));
         draft.setExplanation(blankToNull(request.getExplanation()));
         draft.setKnowledgePoints(toJsonOrNull(request.getKnowledgePoints()));
+        draft.setStatus("WAITING_CONFIRMATION");
+        draft.setIssueReason(null);
         questionDraftMapper.updateById(draft);
 
         questionDraftOptionMapper.delete(new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<QuestionDraftOption>()
@@ -181,7 +212,7 @@ public class QuestionDraftService {
             || !importFileId.equals(draft.getImportFileId())) {
             throw new IllegalArgumentException("题目草稿不属于当前学习库或导入文件");
         }
-        if (!"WAITING_CONFIRMATION".equals(draft.getStatus())) {
+        if (!"WAITING_CONFIRMATION".equals(draft.getStatus()) && !"NEEDS_REVIEW".equals(draft.getStatus())) {
             throw new OperationConflictException("这道草稿已经处理过，请刷新后重试");
         }
 
@@ -190,30 +221,105 @@ public class QuestionDraftService {
         questionDraftMapper.deleteById(draftId);
     }
 
-    private void validateRecognizedQuestion(RecognizedQuestion question) {
-        if (question == null || question.getStem() == null || question.getStem().isBlank()) {
-            throw new IllegalArgumentException("识别结果缺少题干");
-        }
-        if (!SUPPORTED_TYPES.contains(question.getQuestionType())) {
-            throw new IllegalArgumentException("识别结果的题型不支持");
+    /**
+     * AI output is untrusted. We keep everything that a user can reasonably
+     * repair, attach an issue message, and let the remaining Word chunks run.
+     */
+    private PreparedDraft prepareRecognizedQuestion(RecognizedQuestion recognizedQuestion) {
+        List<String> issues = new ArrayList<>();
+        if (recognizedQuestion == null) {
+            return new PreparedDraft(
+                "SINGLE_CHOICE", "（AI 未能生成这道题的题干，请根据原文补充）", List.of(), List.of(), null,
+                List.of(), "AI 未能生成完整题目，请补充题干、选项和正确答案。"
+            );
         }
 
-        List<RecognizedQuestionOption> options = question.getOptions() == null ? List.of() : question.getOptions();
+        String questionType = recognizedQuestion.getQuestionType();
+        if (!SUPPORTED_TYPES.contains(questionType)) {
+            questionType = "SINGLE_CHOICE";
+            issues.add("题型识别不完整，请选择正确题型");
+        }
+
+        String stem = blankToNull(recognizedQuestion.getStem());
+        if (stem == null) {
+            stem = "（AI 未能生成这道题的题干，请根据原文补充）";
+            issues.add("未识别出题干");
+        }
+
+        List<RecognizedQuestionOption> options = new ArrayList<>();
         Set<String> optionKeys = new HashSet<>();
+        List<RecognizedQuestionOption> rawOptions = recognizedQuestion.getOptions() == null
+            ? List.of() : recognizedQuestion.getOptions();
+        for (RecognizedQuestionOption option : rawOptions) {
+            if (option == null || blankToNull(option.getOptionKey()) == null) {
+                issues.add("存在缺少选项标识的选项");
+                continue;
+            }
+            String optionKey = option.getOptionKey().trim().toUpperCase(Locale.ROOT);
+            if (!optionKeys.add(optionKey)) {
+                issues.add("存在重复选项标识");
+                continue;
+            }
+            RecognizedQuestionOption cleanedOption = new RecognizedQuestionOption();
+            cleanedOption.setOptionKey(optionKey);
+            cleanedOption.setContent(blankToNull(option.getContent()));
+            options.add(cleanedOption);
+        }
+        if (options.isEmpty()) {
+            issues.add("未识别出有效选项");
+        }
+
+        List<String> rawAnswers = recognizedQuestion.getCorrectAnswer() == null
+            ? List.of() : recognizedQuestion.getCorrectAnswer();
+        List<String> answers = normalizeAnswers(rawAnswers, options);
+        if (answers.isEmpty()) {
+            String rawAnswerText = rawAnswers.stream().filter(value -> value != null && !value.isBlank())
+                .map(String::trim).reduce((left, right) -> left + "、" + right).orElse("未识别到答案");
+            issues.add("AI 给出的答案“" + rawAnswerText + "”无法对应当前选项，请选择正确答案");
+        }
+        if (!"MULTIPLE_CHOICE".equals(questionType) && answers.size() > 1) {
+            answers = List.of();
+            issues.add("单选题或判断题识别出了多个答案，请选择一个正确答案");
+        }
+
+        return new PreparedDraft(
+            questionType, stem, options, answers, blankToNull(recognizedQuestion.getExplanation()),
+            recognizedQuestion.getKnowledgePoints() == null ? List.of() : recognizedQuestion.getKnowledgePoints(),
+            issues.isEmpty() ? null : String.join("；", issues) + "。"
+        );
+    }
+
+    /** Maps common LLM forms such as “B.” and “选 B” back to an option key. */
+    private List<String> normalizeAnswers(List<String> rawAnswers, List<RecognizedQuestionOption> options) {
+        Map<String, String> answerLookup = new HashMap<>();
         for (RecognizedQuestionOption option : options) {
-            if (option == null || option.getOptionKey() == null || option.getOptionKey().isBlank()
-                || !optionKeys.add(option.getOptionKey())) {
-                throw new IllegalArgumentException("识别结果的选项标识无效或重复");
+            answerLookup.put(normalizeAnswerToken(option.getOptionKey()), option.getOptionKey());
+            if (blankToNull(option.getContent()) != null) {
+                answerLookup.put(normalizeAnswerToken(option.getContent()), option.getOptionKey());
             }
         }
 
-        List<String> answers = question.getCorrectAnswer() == null ? List.of() : question.getCorrectAnswer();
-        if (!optionKeys.containsAll(answers)) {
-            throw new IllegalArgumentException("识别结果的答案不属于当前选项");
+        List<String> answers = new ArrayList<>();
+        for (String rawAnswer : rawAnswers) {
+            if (rawAnswer == null || rawAnswer.isBlank()) {
+                continue;
+            }
+            String normalized = normalizeAnswerToken(rawAnswer);
+            String matchedOptionKey = answerLookup.get(normalized);
+            if (matchedOptionKey == null && normalized.length() > 1) {
+                matchedOptionKey = answerLookup.get(normalized.substring(normalized.length() - 1));
+            }
+            if (matchedOptionKey != null && !answers.contains(matchedOptionKey)) {
+                answers.add(matchedOptionKey);
+            }
         }
-        if (!"MULTIPLE_CHOICE".equals(question.getQuestionType()) && answers.size() > 1) {
-            throw new IllegalArgumentException("单选题和判断题最多只能有一个答案");
-        }
+        return answers;
+    }
+
+    private String normalizeAnswerToken(String value) {
+        return value == null ? "" : value.trim().toUpperCase(Locale.ROOT)
+            .replaceAll("^(正确答案|答案|选项|选)\\s*[是为:：]*\\s*", "")
+            .replaceAll("[.。、;；\\s]+$", "");
     }
 
     private void validateDraftUpdateRequest(UpdateQuestionDraftRequest request) {
@@ -266,21 +372,21 @@ public class QuestionDraftService {
         }
     }
 
-    private void saveDraft(ImportFile importFile, RecognizedQuestion recognizedQuestion, int sortOrder) {
+    private void saveDraft(ImportFile importFile, PreparedDraft recognizedQuestion, int sortOrder) {
         QuestionDraft draft = new QuestionDraft();
         draft.setLibraryId(findLibraryId(importFile));
         draft.setImportFileId(importFile.getId());
         draft.setSortOrder(sortOrder);
-        draft.setStatus("WAITING_CONFIRMATION");
-        draft.setQuestionType(recognizedQuestion.getQuestionType());
-        draft.setStem(recognizedQuestion.getStem().trim());
-        draft.setCorrectAnswer(toJsonOrNull(recognizedQuestion.getCorrectAnswer()));
-        draft.setExplanation(blankToNull(recognizedQuestion.getExplanation()));
-        draft.setKnowledgePoints(toJsonOrNull(recognizedQuestion.getKnowledgePoints()));
+        draft.setStatus(recognizedQuestion.issueReason() == null ? "WAITING_CONFIRMATION" : "NEEDS_REVIEW");
+        draft.setQuestionType(recognizedQuestion.questionType());
+        draft.setStem(recognizedQuestion.stem());
+        draft.setCorrectAnswer(toJsonOrNull(recognizedQuestion.correctAnswer()));
+        draft.setExplanation(recognizedQuestion.explanation());
+        draft.setKnowledgePoints(toJsonOrNull(recognizedQuestion.knowledgePoints()));
+        draft.setIssueReason(recognizedQuestion.issueReason());
         questionDraftMapper.insert(draft);
 
-        List<RecognizedQuestionOption> options = recognizedQuestion.getOptions() == null
-            ? List.of() : recognizedQuestion.getOptions();
+        List<RecognizedQuestionOption> options = recognizedQuestion.options();
         for (int optionIndex = 0; optionIndex < options.size(); optionIndex++) {
             RecognizedQuestionOption recognizedOption = options.get(optionIndex);
             QuestionDraftOption option = new QuestionDraftOption();
@@ -325,4 +431,14 @@ public class QuestionDraftService {
     private String blankToNull(String value) {
         return value == null || value.isBlank() ? null : value.trim();
     }
+
+    private record PreparedDraft(
+        String questionType,
+        String stem,
+        List<RecognizedQuestionOption> options,
+        List<String> correctAnswer,
+        String explanation,
+        List<String> knowledgePoints,
+        String issueReason
+    ) {}
 }

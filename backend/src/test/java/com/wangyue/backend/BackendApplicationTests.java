@@ -251,6 +251,68 @@ class BackendApplicationTests {
 	}
 
 	@Test
+	void wordTextIsSplitAtQuestionBoundariesForIncrementalGeneration() {
+		WordDocumentService.QuestionTextChunks chunks = wordDocumentService.splitQuestionText("""
+			单选题
+			1. 第一题？
+			A. 选项一
+			2．第二题？
+			A. 选项二
+			3、第三题？
+			A. 选项三
+			4. 第四题？
+			A. 选项四
+			5. 第五题？
+			A. 选项五
+			""", 2);
+
+		assertEquals(5, chunks.estimatedQuestionCount());
+		assertEquals(3, chunks.chunks().size());
+		assertTrue(chunks.chunks().get(0).contains("1. 第一题"));
+		assertTrue(chunks.chunks().get(0).contains("2．第二题"));
+		assertTrue(chunks.chunks().get(1).contains("3、第三题"));
+		assertTrue(chunks.chunks().get(2).contains("5. 第五题"));
+	}
+
+	@Test
+	void wordTextStartsANewChunkWhenThePreviousQuestionTextIsTooLong() {
+		WordDocumentService.QuestionTextChunks chunks = wordDocumentService.splitQuestionText("""
+			1. 第一题的题干很长很长很长很长很长很长
+			A. 选项一
+			2. 第二题？
+			A. 选项二
+			""", 3, 30);
+
+		assertEquals(2, chunks.chunks().size());
+		assertTrue(chunks.chunks().get(0).contains("第一题"));
+		assertTrue(chunks.chunks().get(1).contains("第二题"));
+	}
+
+	@Test
+	void structuredWordTextIsParsedLocallyWithoutCallingTheLlm() {
+		WordDocumentService.ParsedQuestions parsed = wordDocumentService.parseStructuredQuestions("""
+			第一部分 单项选择题
+			1. 进程调度的作用是？
+			A.管理文件 B.选择下一个运行进程 C.分配内存 D.删除文件
+			【答案】B
+			【解析】由调度程序选择。
+			第二部分 多项选择题
+			2．下列哪些属于存储设备？
+			A．硬盘 B．内存 C．键盘
+			【答案】A、B
+			""");
+
+		assertEquals(2, parsed.estimatedQuestionCount());
+		assertEquals("SINGLE_CHOICE", parsed.questions().get(0).getQuestionType());
+		assertEquals("进程调度的作用是？", parsed.questions().get(0).getStem());
+		assertEquals(4, parsed.questions().get(0).getOptions().size());
+		assertEquals("选择下一个运行进程", parsed.questions().get(0).getOptions().get(1).getContent());
+		assertEquals(List.of("B"), parsed.questions().get(0).getCorrectAnswer());
+		assertEquals("MULTIPLE_CHOICE", parsed.questions().get(1).getQuestionType());
+		assertEquals(List.of("A", "B"), parsed.questions().get(1).getCorrectAnswer());
+	}
+
+	@Test
 	void wordRecognitionChangesOnlyItsOwnFileStatus() throws Exception {
 		LearningLibrary library = createLibraryForRequestUser("word-flow-test-" + System.nanoTime());
 		Path documentPath = Files.createTempFile("word-import-test-", ".docx");
@@ -627,7 +689,10 @@ class BackendApplicationTests {
 				.with(authenticatedRequest()))
 				.andExpect(status().isCreated())
 				.andExpect(jsonPath("$.files[0].originalFileName").value(wordFileName))
-				.andExpect(jsonPath("$.files[0].id").isNumber());
+				.andExpect(jsonPath("$.files[0].id").isNumber())
+				.andExpect(jsonPath("$.files[0].totalChunkCount").value(0))
+				.andExpect(jsonPath("$.files[0].completedChunkCount").value(0))
+				.andExpect(jsonPath("$.files[0].generatedDraftCount").value(0));
 		} finally {
 			List<ImportFile> importedFiles = importFileMapper.selectList(
 				new LambdaQueryWrapper<ImportFile>()
@@ -794,7 +859,7 @@ class BackendApplicationTests {
 	}
 
 	@Test
-	void batchConfirmationKeepsInvalidDraftsAndConfirmsTheRest() {
+    void batchConfirmationLeavesAiAnswerIssuesForLaterReview() {
 		LearningLibrary library = createLibraryForRequestUser("batch-confirm-" + System.nanoTime());
 		ImportBatch batch = new ImportBatch();
 		batch.setLibraryId(library.getId());
@@ -833,14 +898,13 @@ class BackendApplicationTests {
 				library.getId(), batch.getId(), requestUser.getId()
 			);
 			assertEquals(1, response.getConfirmedCount());
-			assertEquals(1, response.getFailedDrafts().size());
-			assertEquals("确认入库前必须填写正确答案", response.getFailedDrafts().get(0).getMessage());
+            assertEquals(0, response.getFailedDrafts().size());
 			assertEquals(1, questionMapper.selectCount(
 				new LambdaQueryWrapper<Question>().eq(Question::getLibraryId, library.getId())
 			));
 			assertEquals(1, questionDraftMapper.selectCount(new LambdaQueryWrapper<QuestionDraft>()
 				.eq(QuestionDraft::getImportFileId, importFile.getId())
-				.eq(QuestionDraft::getStatus, "WAITING_CONFIRMATION")));
+                .eq(QuestionDraft::getStatus, "NEEDS_REVIEW")));
 		} finally {
 			learningLibraryMapper.deleteById(library.getId());
 		}

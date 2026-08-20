@@ -135,4 +135,26 @@ public class ImportController {
     ) {
         return importService.structureFile(libraryId, importFileId, currentUserId);
     }
+
+    @PostMapping("/files/{importFileId}/retry")
+    public ImportFileResponse retry(
+        @PathVariable Long libraryId,
+        @PathVariable Long importFileId,
+        @AuthenticationPrincipal Long currentUserId
+    ) {
+        ImportFileResponse file = importService.retryFailedFile(libraryId, importFileId, currentUserId);
+        importProcessingQueue.enqueueFile(importFileId);
+        return file;
+    }
+
+    @PostMapping("/files/{importFileId}/reparse-word")
+    public ImportFileResponse reparseWord(
+        @PathVariable Long libraryId,
+        @PathVariable Long importFileId,
+        @AuthenticationPrincipal Long currentUserId
+    ) {
+        ImportFileResponse file = importService.reparseWordFile(libraryId, importFileId, currentUserId);
+        importProcessingQueue.enqueueFile(importFileId);
+        return file;
+    }
 }

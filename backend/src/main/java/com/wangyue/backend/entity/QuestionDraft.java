@@ -23,6 +23,7 @@ public class QuestionDraft {
     private String correctAnswer;
     private String explanation;
     private String knowledgePoints;
+    private String issueReason;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 
@@ -46,6 +47,8 @@ public class QuestionDraft {
     public void setExplanation(String explanation) { this.explanation = explanation; }
     public String getKnowledgePoints() { return knowledgePoints; }
     public void setKnowledgePoints(String knowledgePoints) { this.knowledgePoints = knowledgePoints; }
+    public String getIssueReason() { return issueReason; }
+    public void setIssueReason(String issueReason) { this.issueReason = issueReason; }
     public LocalDateTime getCreatedAt() { return createdAt; }
     public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
     public LocalDateTime getUpdatedAt() { return updatedAt; }

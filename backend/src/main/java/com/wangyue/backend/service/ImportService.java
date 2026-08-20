@@ -23,6 +23,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -47,6 +48,7 @@ public class ImportService {
     private final QuestionDraftMapper questionDraftMapper;
     private final QuestionDraftOptionMapper questionDraftOptionMapper;
     private final ObjectMapper objectMapper;
+    private static final int WORD_FAST_PARSE_SAVE_SIZE = 25;
 
     public ImportService(
         LearningLibraryService learningLibraryService,
@@ -144,12 +146,7 @@ public class ImportService {
                 .eq(ImportFile::getImportBatchId, batch.getId())
                 .orderByAsc(ImportFile::getId)
         ).stream().map(importFile -> {
-            ImportFileResponse response = new ImportFileResponse();
-            response.setId(importFile.getId());
-            response.setOriginalFileName(importFile.getOriginalFileName());
-            response.setStatus(importFile.getStatus());
-            response.setErrorMessage(importFile.getErrorMessage());
-            return response;
+            return toFileResponse(importFile);
         }).toList();
 
         ImportBatchResponse response = new ImportBatchResponse();
@@ -277,7 +274,7 @@ public class ImportService {
     private void cleanUpSourceFileWhenNoDraftNeedsDecision(ImportFile importFile) {
         boolean hasDraftWaitingForDecision = questionDraftMapper.selectCount(new LambdaQueryWrapper<QuestionDraft>()
             .eq(QuestionDraft::getImportFileId, importFile.getId())
-            .eq(QuestionDraft::getStatus, "WAITING_CONFIRMATION")) > 0;
+            .in(QuestionDraft::getStatus, List.of("WAITING_CONFIRMATION", "NEEDS_REVIEW"))) > 0;
         if (hasDraftWaitingForDecision) {
             return;
         }
@@ -361,21 +358,165 @@ public class ImportService {
         importFileMapper.updateById(importFile);
 
         try {
-            questionDraftService.saveRecognitionResult(
-                importFile.getId(),
-                importFile.getRecognitionText(),
-                llmService.structureQuestions(importFile.getRecognitionText())
-            );
+            if (isWordDocument(importFile)) {
+                structureWordDocumentInChunks(importFile);
+            } else {
+                questionDraftService.saveRecognitionResult(
+                    importFile.getId(),
+                    importFile.getRecognitionText(),
+                    llmService.structureQuestions(importFile.getRecognitionText())
+                );
+            }
             importFile.setStatus("WAITING_CONFIRMATION");
+            importFile.setErrorMessage(null);
         } catch (RuntimeException exception) {
             logger.error("导入文件 {} 生成题目失败", importFileId, exception);
-            importFile.setStatus("STRUCTURING_FAILED");
-            importFile.setErrorMessage(toStoredErrorMessage(exception));
+            if (generatedDraftCount(importFile) > 0) {
+                importFile.setStatus("WAITING_CONFIRMATION");
+                importFile.setErrorMessage(buildPartialGenerationMessage(importFile, exception));
+            } else {
+                importFile.setStatus("STRUCTURING_FAILED");
+                importFile.setErrorMessage(toStoredErrorMessage(exception));
+            }
         }
 
         importFileMapper.updateById(importFile);
 
         return toFileResponse(importFile);
+    }
+
+    /**
+     * A failed file keeps its uploaded source and recognised Word text. Reset
+     * only its processing state so the user can retry without uploading again.
+     */
+    public ImportFileResponse retryFailedFile(Long libraryId, Long importFileId) {
+        ImportFile importFile = findOwnedImportFile(libraryId, importFileId);
+
+        if ("STRUCTURING_FAILED".equals(importFile.getStatus())) {
+            if (importFile.getRecognitionText() == null || importFile.getRecognitionText().isBlank()) {
+                throw new IllegalStateException("没有可重新生成的识别文字，请重新上传文件");
+            }
+            importFile.setStatus("WAITING_STRUCTURING");
+            importFile.setTotalChunkCount(0);
+            importFile.setCompletedChunkCount(0);
+            importFile.setGeneratedDraftCount(0);
+            importFile.setEstimatedQuestionCount(0);
+        } else if ("WAITING_CONFIRMATION".equals(importFile.getStatus())
+            && importFile.getErrorMessage() != null
+            && importFile.getTotalChunkCount() != null
+            && importFile.getCompletedChunkCount() != null
+            && importFile.getCompletedChunkCount() < importFile.getTotalChunkCount()) {
+            // An older partial Word run can continue from its first unfinished
+            // chunk. Successful drafts and its progress counters are retained.
+            importFile.setStatus("WAITING_STRUCTURING");
+        } else if ("RECOGNITION_FAILED".equals(importFile.getStatus())) {
+            if (importFile.getStoredFilePath() == null || importFile.getStoredFilePath().isBlank()) {
+                throw new IllegalStateException("原文件已不存在，请重新上传文件");
+            }
+            importFile.setStatus("WAITING_RECOGNITION");
+        } else {
+            throw new OperationConflictException("当前文件不需要重试，请刷新后查看最新状态");
+        }
+
+        importFile.setErrorMessage(null);
+        importFileMapper.updateById(importFile);
+        refreshBatchStatus(importFile.getImportBatchId());
+        return toFileResponse(importFile);
+    }
+
+    /**
+     * Replaces unconfirmed Word drafts after the local parser itself has been
+     * improved. Confirmed or discarded user decisions are deliberately never
+     * overwritten.
+     */
+    @Transactional
+    public ImportFileResponse reparseWordFile(Long libraryId, Long importFileId) {
+        ImportFile importFile = findOwnedImportFile(libraryId, importFileId);
+        if (!isWordDocument(importFile)) {
+            throw new IllegalArgumentException("只有 Word 文件可以按新规则重新整理");
+        }
+        if ("WAITING_RECOGNITION".equals(importFile.getStatus()) || "RECOGNIZING".equals(importFile.getStatus())
+            || "WAITING_STRUCTURING".equals(importFile.getStatus()) || "STRUCTURING".equals(importFile.getStatus())) {
+            throw new OperationConflictException("文件正在处理中，请等待当前处理结束");
+        }
+
+        List<QuestionDraft> drafts = questionDraftMapper.selectList(new LambdaQueryWrapper<QuestionDraft>()
+            .eq(QuestionDraft::getImportFileId, importFileId));
+        boolean hasUserDecision = drafts.stream().anyMatch(draft ->
+            "CONFIRMED".equals(draft.getStatus()) || "DISCARDED".equals(draft.getStatus())
+        );
+        if (hasUserDecision) {
+            throw new OperationConflictException("已有题目被确认入库或不入库，不能自动替换草稿");
+        }
+        for (QuestionDraft draft : drafts) {
+            questionDraftOptionMapper.delete(new LambdaQueryWrapper<QuestionDraftOption>()
+                .eq(QuestionDraftOption::getQuestionDraftId, draft.getId()));
+        }
+        questionDraftMapper.delete(new LambdaQueryWrapper<QuestionDraft>()
+            .eq(QuestionDraft::getImportFileId, importFileId));
+
+        importFile.setStatus("WAITING_STRUCTURING");
+        importFile.setErrorMessage(null);
+        importFile.setTotalChunkCount(0);
+        importFile.setCompletedChunkCount(0);
+        importFile.setGeneratedDraftCount(0);
+        importFile.setEstimatedQuestionCount(0);
+        importFileMapper.updateById(importFile);
+        refreshBatchStatus(importFile.getImportBatchId());
+        return toFileResponse(importFile);
+    }
+
+    /**
+     * Word already contains selectable text, so parse its question number /
+     * option / answer structure locally first. This avoids hundreds of slow
+     * local-AI calls. We save every 25 parsed questions to keep real progress
+     * visible and to preserve anything completed before an unexpected failure.
+     */
+    private void structureWordDocumentInChunks(ImportFile importFile) {
+        WordDocumentService.ParsedQuestions parsedDocument = wordDocumentService.parseStructuredQuestions(
+            importFile.getRecognitionText()
+        );
+        List<com.wangyue.backend.dto.RecognizedQuestion> parsedQuestions = parsedDocument.questions();
+        int savedQuestionCount = generatedDraftCount(importFile);
+        boolean canResume = savedQuestionCount > 0 && savedQuestionCount < parsedQuestions.size();
+        if (!canResume) {
+            savedQuestionCount = 0;
+            importFile.setCompletedChunkCount(0);
+            importFile.setGeneratedDraftCount(0);
+        }
+        importFile.setTotalChunkCount(parsedQuestions.size());
+        importFile.setCompletedChunkCount(savedQuestionCount);
+        importFile.setEstimatedQuestionCount(parsedDocument.estimatedQuestionCount());
+        importFileMapper.updateById(importFile);
+
+        for (int startIndex = savedQuestionCount; startIndex < parsedQuestions.size(); startIndex += WORD_FAST_PARSE_SAVE_SIZE) {
+            int endIndex = Math.min(startIndex + WORD_FAST_PARSE_SAVE_SIZE, parsedQuestions.size());
+            int savedCount = questionDraftService.appendRecognitionResult(
+                importFile.getId(), parsedQuestions.subList(startIndex, endIndex), generatedDraftCount(importFile) + 1
+            );
+            importFile.setGeneratedDraftCount(generatedDraftCount(importFile) + savedCount);
+            importFile.setCompletedChunkCount(generatedDraftCount(importFile));
+            importFileMapper.updateById(importFile);
+        }
+
+        if (generatedDraftCount(importFile) == 0) {
+            throw new IllegalStateException("未识别出可确认的题目");
+        }
+    }
+
+    private int generatedDraftCount(ImportFile importFile) {
+        return importFile.getGeneratedDraftCount() == null ? 0 : importFile.getGeneratedDraftCount();
+    }
+
+    private String buildPartialGenerationMessage(ImportFile importFile, RuntimeException exception) {
+        int totalQuestions = importFile.getTotalChunkCount() == null ? 0 : importFile.getTotalChunkCount();
+        int failedQuestion = Math.min(
+            (importFile.getCompletedChunkCount() == null ? 0 : importFile.getCompletedChunkCount()) + 1,
+            totalQuestions
+        );
+        String errorMessage = toStoredErrorMessage(exception);
+        return "第 " + failedQuestion + "/" + totalQuestions + " 题附近处理失败：" + errorMessage
+            + "；已保留 " + generatedDraftCount(importFile) + " 道草稿，可先查看并确认。";
     }
 
     /** Runs inside the server queue; it never creates a formal question. */
@@ -504,6 +645,16 @@ public class ImportService {
         return structureFile(libraryId, importFileId);
     }
 
+    public ImportFileResponse retryFailedFile(Long libraryId, Long importFileId, Long currentUserId) {
+        requireCurrentUserOwnsLibrary(libraryId, currentUserId);
+        return retryFailedFile(libraryId, importFileId);
+    }
+
+    public ImportFileResponse reparseWordFile(Long libraryId, Long importFileId, Long currentUserId) {
+        requireCurrentUserOwnsLibrary(libraryId, currentUserId);
+        return reparseWordFile(libraryId, importFileId);
+    }
+
     private void requireCurrentUserOwnsLibrary(Long libraryId, Long currentUserId) {
         learningLibraryService.findOwnedById(libraryId, currentUserId);
     }
@@ -540,6 +691,7 @@ public class ImportService {
         response.setCorrectAnswer(readStringList(draft.getCorrectAnswer()));
         response.setExplanation(draft.getExplanation());
         response.setKnowledgePoints(readStringList(draft.getKnowledgePoints()));
+        response.setIssueReason(draft.getIssueReason());
         response.setOptions(questionDraftOptionMapper.selectList(
             new LambdaQueryWrapper<QuestionDraftOption>()
                 .eq(QuestionDraftOption::getQuestionDraftId, draft.getId())
@@ -560,6 +712,16 @@ public class ImportService {
         response.setOriginalFileName(importFile.getOriginalFileName());
         response.setStatus(importFile.getStatus());
         response.setErrorMessage(importFile.getErrorMessage());
+        response.setTotalChunkCount(importFile.getTotalChunkCount());
+        response.setCompletedChunkCount(importFile.getCompletedChunkCount());
+        response.setGeneratedDraftCount(importFile.getGeneratedDraftCount());
+        response.setEstimatedQuestionCount(importFile.getEstimatedQuestionCount());
+        response.setWordFastParsed(isWordDocument(importFile));
+        response.setNeedsReviewDraftCount(Math.toIntExact(questionDraftMapper.selectCount(
+            new LambdaQueryWrapper<QuestionDraft>()
+                .eq(QuestionDraft::getImportFileId, importFile.getId())
+                .eq(QuestionDraft::getStatus, "NEEDS_REVIEW")
+        )));
         return response;
     }
 

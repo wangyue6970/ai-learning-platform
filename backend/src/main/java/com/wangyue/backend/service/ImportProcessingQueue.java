@@ -48,7 +48,8 @@ public class ImportProcessingQueue {
         ).forEach(file -> enqueueFile(file.getId()));
     }
 
-    private void enqueueFile(Long importFileId) {
+    /** Adds one already-uploaded file back to the single background worker. */
+    public void enqueueFile(Long importFileId) {
         if (!queuedFileIds.add(importFileId)) {
             return;
         }

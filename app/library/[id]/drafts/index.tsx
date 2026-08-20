@@ -18,7 +18,11 @@ const questionTypeText = {
 } as const;
 
 export default function BatchQuestionDraftsScreen() {
-  const { id, importBatchId } = useLocalSearchParams<{ id: string; importBatchId: string }>();
+  const { id, importBatchId, filter } = useLocalSearchParams<{
+    id: string;
+    importBatchId: string;
+    filter?: 'needs_review';
+  }>();
   const { showDialog } = useDialog();
   const [drafts, setDrafts] = useState<QuestionDraft[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -106,14 +110,17 @@ export default function BatchQuestionDraftsScreen() {
     }
   }
 
-  const waitingConfirmationCount = drafts.filter((draft) => draft.status !== 'CONFIRMED').length;
-  const confirmedCount = drafts.length - waitingConfirmationCount;
+  const isReviewOnly = filter === 'needs_review';
+  const visibleDrafts = isReviewOnly ? drafts.filter((draft) => draft.status === 'NEEDS_REVIEW') : drafts;
+  const needsReviewCount = drafts.filter((draft) => draft.status === 'NEEDS_REVIEW').length;
+  const waitingConfirmationCount = drafts.filter((draft) => draft.status === 'WAITING_CONFIRMATION').length;
+  const confirmedCount = drafts.filter((draft) => draft.status === 'CONFIRMED').length;
   const confirmationProgress = drafts.length === 0 ? 0 : (confirmedCount / drafts.length) * 100;
 
   return (
     <FlatList
       contentContainerStyle={styles.container}
-      data={drafts}
+      data={visibleDrafts}
       keyExtractor={(draft) => String(draft.id)}
       ListHeaderComponent={
         <View>
@@ -121,22 +128,31 @@ export default function BatchQuestionDraftsScreen() {
             <Pressable onPress={() => router.back()}>
               <Text style={styles.backText}>返回</Text>
             </Pressable>
-            <Pressable
-              disabled={waitingConfirmationCount === 0 || isConfirmingAll}
-              style={[
-                styles.confirmAllButton,
-                (waitingConfirmationCount === 0 || isConfirmingAll) && styles.confirmAllButtonDisabled,
-              ]}
-              onPress={() => void confirmAllDrafts()}
-            >
-              <Text style={styles.confirmAllButtonText}>
-                {isConfirmingAll ? '正在入库…' : `全部入库（${waitingConfirmationCount}）`}
-              </Text>
-            </Pressable>
+            {!isReviewOnly && (
+              <Pressable
+                disabled={waitingConfirmationCount === 0 || isConfirmingAll}
+                style={[
+                  styles.confirmAllButton,
+                  (waitingConfirmationCount === 0 || isConfirmingAll) && styles.confirmAllButtonDisabled,
+                ]}
+                onPress={() => void confirmAllDrafts()}
+              >
+                <Text style={styles.confirmAllButtonText}>
+                  {isConfirmingAll ? '正在入库…' : `全部入库（${waitingConfirmationCount}）`}
+                </Text>
+              </Pressable>
+            )}
           </View>
-          <View style={styles.titleRow}><Text style={styles.title}>确认识别结果</Text><Text style={styles.progressBadge}>待确认 {waitingConfirmationCount}</Text></View>
+          <View style={styles.titleRow}>
+            <Text style={styles.title}>{isReviewOnly ? '待修正题目' : '确认识别结果'}</Text>
+            <Text style={[styles.progressBadge, isReviewOnly && styles.reviewBadge]}>
+              {isReviewOnly ? `待修正 ${needsReviewCount}` : `待确认 ${waitingConfirmationCount}`}
+            </Text>
+          </View>
           <Text style={styles.subtitle}>
-            共识别出 {drafts.length} 道题。可逐题修改；确认后才会进入正式题库。
+            {isReviewOnly
+              ? '这些题目需要先补充或修正。保存修改后才会回到待确认列表。'
+              : `共识别出 ${drafts.length} 道题。可逐题修改；确认后才会进入正式题库。`}
           </Text>
           <View style={styles.progressTrack}>
             <View style={[styles.progressFill, { width: `${confirmationProgress}%` }]} />
@@ -144,27 +160,42 @@ export default function BatchQuestionDraftsScreen() {
           <Text style={styles.progressHint}>已确认 {confirmedCount} / {drafts.length} 题</Text>
           {isLoading && <ActivityIndicator color="#2563EB" size="large" style={styles.loading} />}
           {!!error && <Text style={styles.errorText}>{error}</Text>}
-          {!isLoading && !error && drafts.length === 0 && (
-            <Text style={styles.emptyText}>这个批次暂时没有可查看的草稿。</Text>
+          {!isLoading && !error && visibleDrafts.length === 0 && (
+            <Text style={styles.emptyText}>{isReviewOnly ? '没有待修正题目。' : '这个批次暂时没有可查看的草稿。'}</Text>
           )}
         </View>
       }
       renderItem={({ item: draft, index }) => (
         <View style={styles.draftCard}>
-          <View style={styles.draftHeader}><Text style={styles.draftNumber}>第 {index + 1} 题</Text><Text style={styles.typeBadge}>{questionTypeText[draft.questionType]}</Text></View>
+          <View style={styles.draftHeader}>
+            <Text style={styles.draftNumber}>第 {draft.sortOrder || index + 1} 题</Text>
+            <Text style={[styles.typeBadge, draft.status === 'NEEDS_REVIEW' && styles.reviewTypeBadge]}>
+              {draft.status === 'NEEDS_REVIEW' ? '需要修正' : questionTypeText[draft.questionType]}
+            </Text>
+          </View>
           <Text style={styles.stem}>{draft.stem}</Text>
+          {!!draft.issueReason && <Text style={styles.issueText}>问题：{draft.issueReason}</Text>}
           <Text style={styles.answerText}>
             识别答案：{draft.correctAnswer.length > 0 ? draft.correctAnswer.join('、') : '未识别到答案'}
           </Text>
           {draft.status === 'CONFIRMED' ? (
             <Text style={styles.confirmedText}>已正式入库</Text>
+          ) : draft.status === 'NEEDS_REVIEW' ? (
+            <Pressable
+              style={styles.editButton}
+              onPress={() => router.push({
+                pathname: '/library/[id]/drafts/[importFileId]/[draftId]',
+                params: { id, importFileId: String(draft.importFileId), draftId: String(draft.id), returnToBatchId: importBatchId },
+              })}>
+              <Text style={styles.editButtonText}>去修正这道题</Text>
+            </Pressable>
           ) : (
             <View style={styles.buttonRow}>
               <Pressable
                 style={styles.editButton}
                 onPress={() => router.push({
                   pathname: '/library/[id]/drafts/[importFileId]/[draftId]',
-                  params: { id, importFileId: String(draft.importFileId), draftId: String(draft.id) },
+                  params: { id, importFileId: String(draft.importFileId), draftId: String(draft.id), returnToBatchId: importBatchId },
                 })}>
                 <Text style={styles.editButtonText}>编辑草稿</Text>
               </Pressable>
@@ -202,6 +233,7 @@ const styles = StyleSheet.create({
   titleRow: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between', marginTop: 23 },
   title: { color: ui.colors.text, fontSize: 23, fontWeight: '800', letterSpacing: -0.6 },
   progressBadge: { backgroundColor: ui.colors.primarySoft, borderRadius: 9, color: ui.colors.primary, fontSize: 12, fontWeight: '800', paddingHorizontal: 9, paddingVertical: 5 },
+  reviewBadge: { backgroundColor: '#FFF1D9', color: '#A85C00' },
   subtitle: { color: ui.colors.mutedText, fontSize: 14, lineHeight: 21, marginTop: 10 },
   progressTrack: { backgroundColor: '#E8EDF5', borderRadius: 4, height: 4, marginTop: 14, overflow: 'hidden' },
   progressFill: { backgroundColor: ui.colors.primary, borderRadius: 4, height: '100%' },
@@ -213,8 +245,10 @@ const styles = StyleSheet.create({
   draftHeader: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between' },
   draftNumber: { color: ui.colors.mutedText, fontSize: 13, fontWeight: '800' },
   typeBadge: { backgroundColor: ui.colors.primarySoft, borderRadius: 8, color: ui.colors.primary, fontSize: 12, fontWeight: '800', paddingHorizontal: 8, paddingVertical: 4 },
+  reviewTypeBadge: { backgroundColor: '#FFF1D9', color: '#A85C00' },
   stem: { color: ui.colors.text, fontSize: 16, fontWeight: '800', lineHeight: 24, marginTop: 11 },
   answerText: { color: ui.colors.mutedText, fontSize: 12, marginTop: 12 },
+  issueText: { backgroundColor: '#FFF8EB', borderRadius: 9, color: '#A85C00', fontSize: 12, fontWeight: '700', lineHeight: 18, marginTop: 12, padding: 10 },
   confirmedText: { color: ui.colors.success, fontSize: 14, fontWeight: '800', marginTop: 18 },
   buttonRow: { flexDirection: 'row', gap: 9, marginTop: 16 },
   editButton: { alignItems: 'center', borderColor: '#B7CDFC', borderRadius: 11, borderWidth: 1, flex: 1, paddingVertical: 11 },
