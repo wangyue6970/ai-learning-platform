@@ -22,6 +22,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -53,6 +54,10 @@ public class ImportService {
     // only need to structure a few original questions at a time.
     private static final int WORD_LLM_QUESTIONS_PER_CHUNK = 3;
     private static final int WORD_LLM_MAX_CHARACTERS_PER_CHUNK = 4_800;
+    private static final Set<String> UNFINISHED_WORD_STATUSES = Set.of(
+        "WAITING_RECOGNITION", "RECOGNIZING", "WAITING_STRUCTURING", "STRUCTURING",
+        "RECOGNITION_FAILED", "STRUCTURING_FAILED"
+    );
 
     public ImportService(
         LearningLibraryService learningLibraryService,
@@ -220,13 +225,14 @@ public class ImportService {
     public QuestionDraftResponse confirmDraft(Long libraryId, Long importFileId, Long draftId) {
         ImportFile importFile = findOwnedImportFile(libraryId, importFileId);
         questionDraftService.confirmDraft(libraryId, importFileId, draftId);
-        cleanUpSourceFileWhenNoDraftNeedsDecision(importFile);
 
         QuestionDraft draft = questionDraftMapper.selectById(draftId);
         if (draft == null) {
             throw new IllegalArgumentException("题目草稿不存在");
         }
-        return toDraftResponse(draft);
+        QuestionDraftResponse response = toDraftResponse(draft);
+        cleanUpSourceFileWhenNoDraftNeedsDecision(importFile);
+        return response;
     }
 
     /**
@@ -271,9 +277,9 @@ public class ImportService {
     }
 
     /**
-     * One source image can produce several drafts. It must remain available
-     * until the last draft from that image has been confirmed, then the
-     * temporary source file is removed for privacy.
+     * One source document can produce several drafts. It must remain available
+     * until the user has processed every draft; then remove every temporary
+     * import record and the original file. Formal Question records are kept.
      */
     private void cleanUpSourceFileWhenNoDraftNeedsDecision(ImportFile importFile) {
         boolean hasDraftWaitingForDecision = questionDraftMapper.selectCount(new LambdaQueryWrapper<QuestionDraft>()
@@ -283,22 +289,60 @@ public class ImportService {
             return;
         }
 
-        boolean hasConfirmedDraft = questionDraftMapper.selectCount(new LambdaQueryWrapper<QuestionDraft>()
-            .eq(QuestionDraft::getImportFileId, importFile.getId())
-            .eq(QuestionDraft::getStatus, "CONFIRMED")) > 0;
-        importFile.setStatus(hasConfirmedDraft ? "CONFIRMED" : "DISCARDED");
         try {
             importStorageService.deleteStoredFile(importFile.getStoredFilePath());
-            importFile.setStoredFilePath(null);
-            importFile.setErrorMessage(null);
         } catch (RuntimeException exception) {
-            // The formal question has already been saved. Do not falsely tell
-            // the user that confirmation failed just because cleanup failed.
-            importFile.setErrorMessage(hasConfirmedDraft
-                ? "题目已入库，但临时原文件清理失败"
-                : "草稿已不入库，但临时原文件清理失败");
+            logger.warn("临时导入文件 {} 清理失败", importFile.getId(), exception);
+            return;
         }
-        importFileMapper.updateById(importFile);
+        Long importBatchId = importFile.getImportBatchId();
+        // The database cascade removes AI drafts and draft options; Questions
+        // already confirmed into the bank do not reference ImportFile.
+        importFileMapper.deleteById(importFile.getId());
+        deleteBatchWhenEmpty(importBatchId);
+    }
+
+    private void deleteBatchWhenEmpty(Long importBatchId) {
+        if (importFileMapper.selectCount(new LambdaQueryWrapper<ImportFile>()
+            .eq(ImportFile::getImportBatchId, importBatchId)) == 0) {
+            importBatchMapper.deleteById(importBatchId);
+        }
+    }
+
+    private boolean isWordUpload(MultipartFile file) {
+        String originalFileName = file == null ? null : file.getOriginalFilename();
+        return originalFileName != null && originalFileName.toLowerCase(Locale.ROOT).endsWith(".docx");
+    }
+
+    /** Returns unfinished Word tasks in a library so the queue can cancel them. */
+    public List<Long> findUnfinishedWordImportFileIds(Long libraryId, Long currentUserId) {
+        requireCurrentUserOwnsLibrary(libraryId, currentUserId);
+        return findUnfinishedWordImportFiles(libraryId).stream().map(ImportFile::getId).toList();
+    }
+
+    /** Deletes only unfinished Word temporary data; formal questions stay intact. */
+    @Transactional
+    public void deleteUnfinishedWordImports(Long libraryId, Long currentUserId) {
+        requireCurrentUserOwnsLibrary(libraryId, currentUserId);
+        for (ImportFile importFile : findUnfinishedWordImportFiles(libraryId)) {
+            importStorageService.deleteStoredFile(importFile.getStoredFilePath());
+            Long importBatchId = importFile.getImportBatchId();
+            importFileMapper.deleteById(importFile.getId());
+            deleteBatchWhenEmpty(importBatchId);
+        }
+    }
+
+    private List<ImportFile> findUnfinishedWordImportFiles(Long libraryId) {
+        List<Long> importBatchIds = importBatchMapper.selectList(new LambdaQueryWrapper<ImportBatch>()
+            .eq(ImportBatch::getLibraryId, libraryId)
+        ).stream().map(ImportBatch::getId).toList();
+        if (importBatchIds.isEmpty()) {
+            return List.of();
+        }
+        return importFileMapper.selectList(new LambdaQueryWrapper<ImportFile>()
+            .in(ImportFile::getImportBatchId, importBatchIds)
+            .in(ImportFile::getStatus, UNFINISHED_WORD_STATUSES)
+        ).stream().filter(this::isWordDocument).toList();
     }
 
     public ImportFileResponse recognizeFile(Long libraryId, Long importFileId) {

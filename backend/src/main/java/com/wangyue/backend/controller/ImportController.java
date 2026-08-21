@@ -42,6 +42,17 @@ public class ImportController {
         @RequestParam("files") List<MultipartFile> files,
         @AuthenticationPrincipal Long currentUserId
     ) {
+        boolean includesWord = files.stream().anyMatch(file ->
+            file.getOriginalFilename() != null
+                && file.getOriginalFilename().toLowerCase(java.util.Locale.ROOT).endsWith(".docx")
+        );
+        if (includesWord) {
+            List<Long> unfinishedWordFileIds = importService.findUnfinishedWordImportFileIds(
+                libraryId, currentUserId
+            );
+            importProcessingQueue.cancelFiles(unfinishedWordFileIds);
+            importService.deleteUnfinishedWordImports(libraryId, currentUserId);
+        }
         ImportBatchResponse batch = importService.createBatch(libraryId, files, currentUserId);
         importProcessingQueue.enqueueBatch(batch.getId());
         return batch;
