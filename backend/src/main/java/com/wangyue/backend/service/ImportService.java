@@ -49,9 +49,8 @@ public class ImportService {
     private final QuestionDraftMapper questionDraftMapper;
     private final QuestionDraftOptionMapper questionDraftOptionMapper;
     private final ObjectMapper objectMapper;
-    // Keep Word requests deliberately small. Local models understand mixed
-    // formats (single choice, judgment, fill-in notes) much better when they
-    // only need to structure a few original questions at a time.
+    // Non-standard Word documents still need semantic extraction. Keep those
+    // fallback requests small so one failed batch never blocks later text.
     private static final int WORD_LLM_QUESTIONS_PER_CHUNK = 3;
     private static final int WORD_LLM_MAX_CHARACTERS_PER_CHUNK = 4_800;
     private static final Set<String> UNFINISHED_WORD_STATUSES = Set.of(
@@ -515,12 +514,20 @@ public class ImportService {
     }
 
     /**
-     * Word text can contain more than the normal A/B/C/D layout, such as
-     * judgment marks, fill-in answers and explanations in brackets. Restore
-     * the local-AI path for Word so those formats are understood semantically.
-     * Each finished chunk is saved immediately, so progress remains visible.
+     * Prefer a deterministic parser for a standard Word question bank. The
+     * source document already contains the stem, options and answer, so an LLM
+     * must not be allowed to accidentally drop the stem while "understanding"
+     * the text. Non-standard Word layouts still fall back to DeepSeek.
      */
     private void structureWordDocumentInChunks(ImportFile importFile) {
+        WordDocumentService.ParsedQuestions parsedQuestions = wordDocumentService.parseStructuredQuestions(
+            importFile.getRecognitionText()
+        );
+        if (canUseOriginalWordStructure(parsedQuestions)) {
+            saveStructuredWordDrafts(importFile, parsedQuestions);
+            return;
+        }
+
         WordDocumentService.QuestionTextChunks chunks = wordDocumentService.splitQuestionText(
             importFile.getRecognitionText(), WORD_LLM_QUESTIONS_PER_CHUNK, WORD_LLM_MAX_CHARACTERS_PER_CHUNK
         );
@@ -547,6 +554,41 @@ public class ImportService {
         }
 
         if (generatedDraftCount(importFile) == 0) {
+            throw new IllegalStateException("未识别出可确认的题目");
+        }
+    }
+
+    /**
+     * A standard Word bank is safe to read directly only when every numbered
+     * question has an original stem. Missing options/answers are deliberately
+     * kept as repairable drafts instead of being invented by the AI.
+     */
+    private boolean canUseOriginalWordStructure(WordDocumentService.ParsedQuestions parsedQuestions) {
+        return parsedQuestions.estimatedQuestionCount() > 0
+            && !parsedQuestions.questions().isEmpty()
+            && parsedQuestions.questions().stream().allMatch(question ->
+                question != null && question.getStem() != null && !question.getStem().isBlank()
+            );
+    }
+
+    private void saveStructuredWordDrafts(
+        ImportFile importFile,
+        WordDocumentService.ParsedQuestions parsedQuestions
+    ) {
+        importFile.setTotalChunkCount(1);
+        importFile.setCompletedChunkCount(0);
+        importFile.setEstimatedQuestionCount(parsedQuestions.estimatedQuestionCount());
+        importFile.setGeneratedDraftCount(0);
+        importFileMapper.updateById(importFile);
+
+        int savedCount = questionDraftService.appendRecognitionResult(
+            importFile.getId(), parsedQuestions.questions(), 1
+        );
+        importFile.setGeneratedDraftCount(savedCount);
+        importFile.setCompletedChunkCount(1);
+        importFileMapper.updateById(importFile);
+
+        if (savedCount == 0) {
             throw new IllegalStateException("未识别出可确认的题目");
         }
     }

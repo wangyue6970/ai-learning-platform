@@ -1,5 +1,5 @@
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import {
   confirmAllImportBatchDrafts,
@@ -18,10 +18,11 @@ const questionTypeText = {
 } as const;
 
 export default function BatchQuestionDraftsScreen() {
-  const { id, importBatchId, filter } = useLocalSearchParams<{
+  const { id, importBatchId, filter, live } = useLocalSearchParams<{
     id: string;
     importBatchId: string;
     filter?: 'needs_review';
+    live?: string;
   }>();
   const { showDialog } = useDialog();
   const [drafts, setDrafts] = useState<QuestionDraft[]>([]);
@@ -30,16 +31,20 @@ export default function BatchQuestionDraftsScreen() {
   const [actingDraftId, setActingDraftId] = useState<number | null>(null);
   const [isConfirmingAll, setIsConfirmingAll] = useState(false);
 
-  const loadDrafts = useCallback(async () => {
-    setIsLoading(true);
-    setError('');
+  const loadDrafts = useCallback(async (showLoading = true) => {
+    if (showLoading) {
+      setIsLoading(true);
+    }
 
     try {
       setDrafts(await getImportBatchDrafts(id, importBatchId));
+      setError('');
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : '读取本批次草稿失败，请稍后重试');
     } finally {
-      setIsLoading(false);
+      if (showLoading) {
+        setIsLoading(false);
+      }
     }
   }, [id, importBatchId]);
 
@@ -48,6 +53,15 @@ export default function BatchQuestionDraftsScreen() {
       void loadDrafts();
     }, [loadDrafts])
   );
+
+  useEffect(() => {
+    if (live !== '1') {
+      return;
+    }
+
+    const timer = setInterval(() => void loadDrafts(false), 2000);
+    return () => clearInterval(timer);
+  }, [live, loadDrafts]);
 
   async function confirmDraft(draft: QuestionDraft) {
     if (isConfirmingAll) {
@@ -111,6 +125,7 @@ export default function BatchQuestionDraftsScreen() {
   }
 
   const isReviewOnly = filter === 'needs_review';
+  const isLiveReview = live === '1';
   const visibleDrafts = isReviewOnly ? drafts.filter((draft) => draft.status === 'NEEDS_REVIEW') : drafts;
   const needsReviewCount = drafts.filter((draft) => draft.status === 'NEEDS_REVIEW').length;
   const waitingConfirmationCount = drafts.filter((draft) => draft.status === 'WAITING_CONFIRMATION').length;
@@ -128,7 +143,7 @@ export default function BatchQuestionDraftsScreen() {
             <Pressable onPress={() => router.back()}>
               <Text style={styles.backText}>返回</Text>
             </Pressable>
-            {!isReviewOnly && (
+            {!isReviewOnly && !isLiveReview && (
               <Pressable
                 disabled={waitingConfirmationCount === 0 || isConfirmingAll}
                 style={[
@@ -152,8 +167,11 @@ export default function BatchQuestionDraftsScreen() {
           <Text style={styles.subtitle}>
             {isReviewOnly
               ? '这些题目需要先补充或修正。保存修改后才会回到待确认列表。'
+              : isLiveReview
+                ? '后台仍在生成题目，新草稿会自动出现在这里。你现在可逐题修改、确认入库或不入库。'
               : `共识别出 ${drafts.length} 道题。可逐题修改；确认后才会进入正式题库。`}
           </Text>
+          {isLiveReview && <Text style={styles.liveHint}>正在实时刷新已生成的草稿</Text>}
           <View style={styles.progressTrack}>
             <View style={[styles.progressFill, { width: `${confirmationProgress}%` }]} />
           </View>
@@ -235,6 +253,7 @@ const styles = StyleSheet.create({
   progressBadge: { backgroundColor: ui.colors.primarySoft, borderRadius: 9, color: ui.colors.primary, fontSize: 12, fontWeight: '800', paddingHorizontal: 9, paddingVertical: 5 },
   reviewBadge: { backgroundColor: '#FFF1D9', color: '#A85C00' },
   subtitle: { color: ui.colors.mutedText, fontSize: 14, lineHeight: 21, marginTop: 10 },
+  liveHint: { color: ui.colors.primary, fontSize: 12, fontWeight: '800', marginTop: 9 },
   progressTrack: { backgroundColor: '#E8EDF5', borderRadius: 4, height: 4, marginTop: 14, overflow: 'hidden' },
   progressFill: { backgroundColor: ui.colors.primary, borderRadius: 4, height: '100%' },
   progressHint: { color: ui.colors.mutedText, fontSize: 11, marginTop: 7 },

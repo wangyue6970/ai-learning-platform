@@ -253,8 +253,8 @@ export default function ImportQuestionsScreen() {
       await reparseWordImportFile(id, file.id);
       await loadLatestBatch();
       showDialog({
-        title: '已开始用 AI 重新识别',
-        message: '旧的未确认草稿已替换，后台会按每 3 道题一批重新理解 Word 内容。',
+        title: '已开始按 Word 原文重新整理',
+        message: '旧的未确认草稿已替换；标准题库 Word 会直接保留原题干、选项和答案。',
         tone: 'success',
       });
     } catch (error) {
@@ -271,6 +271,12 @@ export default function ImportQuestionsScreen() {
   if (!library) {
     return <Text style={styles.emptyText}>学习库不存在。</Text>;
   }
+
+  const generatedDraftCount = latestBatch?.files.reduce(
+    (total, file) => total + (file.generatedDraftCount || 0),
+    0
+  ) || 0;
+  const isLatestBatchProcessing = latestBatch?.files.some(isProcessingFile) || false;
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
@@ -341,16 +347,18 @@ export default function ImportQuestionsScreen() {
             <Text style={styles.batchSummaryTitle}>本批次处理进度</Text>
             <Text style={styles.progressText}>{getBatchSummary(latestBatch.files)}</Text>
           </View>
-          {latestBatch.files.some((file) =>
-            ['WAITING_CONFIRMATION', 'CONFIRMED', 'DISCARDED'].includes(file.status)
-          ) && (
+          {generatedDraftCount > 0 && (
             <Pressable
               style={styles.batchDraftButton}
               onPress={() => router.push({
                 pathname: '/library/[id]/drafts',
-                params: { id, importBatchId: String(latestBatch.id) },
+                params: { id, importBatchId: String(latestBatch.id), live: isLatestBatchProcessing ? '1' : '0' },
               })}>
-              <Text style={styles.batchDraftButtonText}>集中查看本批次草稿</Text>
+              <Text style={styles.batchDraftButtonText}>
+                {isLatestBatchProcessing
+                  ? `查看已生成 ${generatedDraftCount} 道草稿`
+                  : '集中查看本批次草稿'}
+              </Text>
             </Pressable>
           )}
           {!latestBatch.files.some(isProcessingFile) && latestBatch.files.some((file) => (file.needsReviewDraftCount || 0) > 0) && (
@@ -414,7 +422,7 @@ export default function ImportQuestionsScreen() {
                   style={[styles.structureButton, retryingFileId !== null && styles.retryButtonDisabled]}
                   onPress={() => void reparseWordFile(file)}>
                   <Text style={styles.structureButtonText}>
-                    {retryingFileId === file.id ? '正在重新识别…' : '用 AI 重新识别 Word'}
+                    {retryingFileId === file.id ? '正在重新整理…' : '按 Word 原文重新整理'}
                   </Text>
                 </Pressable>
               )}
