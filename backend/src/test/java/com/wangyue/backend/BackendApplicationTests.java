@@ -43,6 +43,7 @@ import com.wangyue.backend.service.PracticeService;
 import com.wangyue.backend.service.QuestionDraftService;
 import com.wangyue.backend.service.OcrService;
 import com.wangyue.backend.service.ImportService;
+import com.wangyue.backend.service.ImportStorageService;
 import com.wangyue.backend.service.LlmService;
 import com.wangyue.backend.service.WordDocumentService;
 import com.wangyue.backend.service.JwtTokenService;
@@ -158,6 +159,9 @@ class BackendApplicationTests {
 
 	@Autowired
 	private ImportService importService;
+
+	@Autowired
+	private ImportStorageService importStorageService;
 
 	@Autowired
 	private OcrService ocrService;
@@ -1064,10 +1068,37 @@ class BackendApplicationTests {
 	}
 
 	@Test
-	void libraryCanBeDeleted() {
+	void libraryCanBeDeletedAlongWithItsManagedImportSourceFile() {
 		LearningLibrary library = createLibraryForRequestUser("temporary-delete-test");
-		learningLibraryService.delete(library.getId(), requestUser.getId());
-		assertNull(learningLibraryService.findById(library.getId()));
+		ImportBatch batch = new ImportBatch();
+		batch.setLibraryId(library.getId());
+		batch.setStatus("WAITING_RECOGNITION");
+		importBatchMapper.insert(batch);
+
+		MockMultipartFile uploadedFile = new MockMultipartFile(
+			"files", "temporary-delete.docx",
+			"application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+			"temporary source".getBytes()
+		);
+		String storedFilePath = importStorageService.store(uploadedFile);
+		ImportFile importFile = new ImportFile();
+		importFile.setImportBatchId(batch.getId());
+		importFile.setOriginalFileName("temporary-delete.docx");
+		importFile.setStoredFilePath(storedFilePath);
+		importFile.setFileType("WORD");
+		importFile.setFileSizeBytes(16L);
+		importFile.setStatus("WAITING_RECOGNITION");
+		importFileMapper.insert(importFile);
+
+		try {
+			learningLibraryService.delete(library.getId(), requestUser.getId());
+			assertNull(learningLibraryService.findById(library.getId()));
+			assertNull(importFileMapper.selectById(importFile.getId()));
+			assertFalse(Files.exists(Path.of(storedFilePath)));
+		} finally {
+			importStorageService.deleteStoredFile(storedFilePath);
+			learningLibraryMapper.deleteById(library.getId());
+		}
 	}
 
 	@Test
